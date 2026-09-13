@@ -13,6 +13,7 @@
     "cap:build": "pnpm build && npx cap sync && cd android && gradlew assembleDebug"
   },
   "dependencies": {
+    "@capacitor/status-bar": "^7.0.6",
     "pinia": "^2.1.7",
     "vue": "^3.4.0",
     "vue-router": "^4.2.5"
@@ -31,6 +32,8 @@
     "vue-tsc": "^3.2.8"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["@capacitor/cli"]
+    "onlyBuiltDependencies": [
+      "@capacitor/cli"
+    ]
   }
 }

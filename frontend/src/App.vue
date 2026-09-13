@@ -10,13 +10,21 @@
 import { onMounted } from 'vue'
 import { useThemeStore } from './store/theme'
 import { useUserStore } from './store/user'
+import { StatusBar, Style } from '@capacitor/status-bar'
+import { Capacitor } from '@capacitor/core'
 
 const themeStore = useThemeStore()
 const userStore = useUserStore()
 
-onMounted(() => {
+onMounted(async () => {
   themeStore.initTheme()
   userStore.restoreSession()
+
+  if (Capacitor.isNativePlatform()) {
+    StatusBar.setOverlaysWebView({ overlay: true })
+    StatusBar.setStyle({ style: Style.Dark })
+    StatusBar.setBackgroundColor({ color: '#1f2937' })
+  }
 })
 </script>
 

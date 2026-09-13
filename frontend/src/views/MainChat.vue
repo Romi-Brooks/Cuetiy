@@ -237,7 +237,7 @@
     </template>
 
     <!-- ==================== MOBILE BOTTOM TAB BAR ==================== -->
-    <div v-if="isMobile" class="fixed bottom-0 left-0 right-0 z-30 flex bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 pb-[env(safe-area-inset-bottom,0px)]">
+    <div v-if="isMobile && !(activeTab === 'chat' && chatStore.currentConversationId)" class="fixed bottom-0 left-0 right-0 z-30 flex bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 pb-[env(safe-area-inset-bottom,0px)]">
       <button v-for="t in tabs" :key="t.key" class="flex-1 flex flex-col items-center justify-center py-2 gap-0.5 transition-colors"
         :class="activeTab === t.key ? 'text-wechat-green' : 'text-gray-500 dark:text-gray-400'"
         @click="activeTab = t.key"
