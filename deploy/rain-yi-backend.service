@@ -1,0 +1,15 @@
+[Unit]
+Description=RainYi Go Backend
+After=network.target redis-server.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/rain-yi/backend
+ExecStart=/opt/rain-yi/backend/rain-yi-backend
+Restart=always
+RestartSec=5
+EnvironmentFile=/opt/rain-yi/backend/.env
+
+[Install]
+WantedBy=multi-user.target
