@@ -1,4 +1,4 @@
-package com.rainyi.app;
+package com.cuetiy.app;
 
 import android.os.Bundle;
 import android.webkit.WebSettings;

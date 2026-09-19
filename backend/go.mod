@@ -1,4 +1,4 @@
-module rain-yi-backend
+module cuetiy-backend
 
 go 1.26.0
 

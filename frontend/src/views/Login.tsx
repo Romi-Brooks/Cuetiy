@@ -124,7 +124,7 @@ export function Login() {
     <div className="h-[100dvh] bg-gray-100 dark:bg-wechat-bg-dark flex items-center justify-center p-4 overflow-y-auto">
       <div className="w-full max-w-md py-8">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-wechat-green mb-2">RainYi</h1>
+          <h1 className="text-4xl font-bold text-wechat-green mb-2">Cuetiy</h1>
           <p className="text-sm text-gray-500 dark:text-wechat-text-secondary-dark">
             你的专属情感陪伴机器人
           </p>

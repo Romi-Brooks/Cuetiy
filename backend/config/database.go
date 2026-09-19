@@ -63,9 +63,9 @@ func InitDatabase() *gorm.DB {
 		path := cfg.SQLitePath
 		if path == "" {
 			if cfg.RuntimeDir == "" || cfg.RuntimeDir == "." {
-				path = filepath.Join("data", "rainyi.db")
+				path = filepath.Join("data", "cuetiy.db")
 			} else {
-				path = filepath.Join(cfg.RuntimeDir, "data", "rainyi.db")
+				path = filepath.Join(cfg.RuntimeDir, "data", "cuetiy.db")
 			}
 		}
 		if dir := filepath.Dir(path); dir != "" && dir != "." {

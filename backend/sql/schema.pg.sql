@@ -1,16 +1,16 @@
--- RainYi PostgreSQL 初始化
+-- Cuetiy PostgreSQL 初始化
 -- 表结构以 backend/model/models.go + GORM AutoMigrate 为准
 -- 本脚本仅用于：建库 + 建账号（可选）
 
--- CREATE DATABASE rain_yi
+-- CREATE DATABASE cuetiy
 --   WITH ENCODING 'UTF8'
 --   LC_COLLATE='en_US.utf8'
 --   LC_CTYPE='en_US.utf8'
 --   TEMPLATE=template0;
 
 -- 可选：专用账号
--- CREATE USER rainyi WITH PASSWORD 'CHANGE_ME';
--- GRANT ALL PRIVILEGES ON DATABASE rain_yi TO rainyi;
+-- CREATE USER cuetiy WITH PASSWORD 'CHANGE_ME';
+-- GRANT ALL PRIVILEGES ON DATABASE cuetiy TO cuetiy;
 
 -- 手动建表兜底（与 models.go 对应；AutoMigrate 失败时使用）
 -- 注意：bool / timestamptz / text 为 PG 语义
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   id BIGSERIAL PRIMARY KEY,
   user_id BIGINT NOT NULL,
   title VARCHAR(200) NOT NULL DEFAULT '情感陪伴',
-  ai_nickname VARCHAR(100) NOT NULL DEFAULT 'RainYi',
+  ai_nickname VARCHAR(100) NOT NULL DEFAULT 'Cuetiy',
   ai_avatar VARCHAR(500),
   persona_id BIGINT NULL,
   created_at TIMESTAMPTZ NULL,

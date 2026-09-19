@@ -1,8 +1,8 @@
 package repository
 
 import (
-	"rain-yi-backend/config"
-	"rain-yi-backend/model"
+	"cuetiy-backend/config"
+	"cuetiy-backend/model"
 )
 
 type MessageRepository struct{}

@@ -1,4 +1,4 @@
-# RainYi 上下文与 Skill 加载技术方案
+# Cuetiy 上下文与 Skill 加载技术方案
 
 > 状态：**已部分落地（后端 Phase0–2）**  
 > 关联源材料：项目内 `skills/` / `backend/skill/default_skills/` 技能 Markdown  

@@ -14,12 +14,12 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// RainYi Desktop 宿主（thin / unified 共用）
+// Cuetiy Desktop 宿主（thin / unified 共用）
 // thin：只开 WebView，API 由用户在登录页配置
 // unified：先拉起本机 Go 后端（SQLite），默认指向 127.0.0.1
 
 func main() {
-	mode := strings.ToLower(strings.TrimSpace(os.Getenv("RAIN_YI_PACKAGE")))
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("CUETIY_PACKAGE")))
 	if mode == "" {
 		mode = "thin"
 	}
@@ -44,9 +44,9 @@ func main() {
 }
 
 func startUnifiedBackend(exeDir string) context.CancelFunc {
-	names := []string{"rainyi-backend.exe", "rainyi-backend"}
+	names := []string{"cuetiy-backend.exe", "cuetiy-backend"}
 	if runtime.GOOS != "windows" {
-		names = []string{"rainyi-backend"}
+		names = []string{"cuetiy-backend"}
 	}
 	var binPath string
 	candidates := []string{
@@ -68,7 +68,7 @@ func startUnifiedBackend(exeDir string) context.CancelFunc {
 		}
 	}
 	if binPath == "" {
-		log.Println("unified: 未找到 rainyi-backend，跳过内嵌后端（可手动启动）")
+		log.Println("unified: 未找到 cuetiy-backend，跳过内嵌后端（可手动启动）")
 		return func() {}
 	}
 
@@ -76,9 +76,9 @@ func startUnifiedBackend(exeDir string) context.CancelFunc {
 	workDir := exeDir
 	env := append(os.Environ(),
 		"DB_DRIVER=sqlite",
-		"SQLITE_PATH="+filepath.Join(workDir, "data", "rainyi.db"),
+		"SQLITE_PATH="+filepath.Join(workDir, "data", "cuetiy.db"),
 		"SERVER_HOST=127.0.0.1",
-		"SERVER_PORT="+envOr("RAIN_YI_BACKEND_PORT", "8080"),
+		"SERVER_PORT="+envOr("CUETIY_BACKEND_PORT", "8080"),
 		"STORAGE_DIR="+filepath.Join(workDir, "data", "files"),
 		"ARCHIVE_DIR="+filepath.Join(workDir, "data", "archives"),
 		"SKILLS_DIR="+filepath.Join(workDir, "skills"),
@@ -113,7 +113,7 @@ func runTauri(exeDir, mode string) {
 	if _, err := os.Stat(frontendDist); err == nil {
 		log.Printf("package=%s frontend=%s", mode, frontendDist)
 	}
-	fmt.Println("RainYi desktop host ready. Use `pnpm tauri dev` / `pnpm tauri build` for the real shell.")
+	fmt.Println("Cuetiy desktop host ready. Use `pnpm tauri dev` / `pnpm tauri build` for the real shell.")
 	fmt.Printf("Package mode: %s\n", mode)
 	if mode == "unified" {
 		fmt.Println("API should be: http://127.0.0.1:8080")

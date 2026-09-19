@@ -5,12 +5,12 @@ import (
 	"sort"
 	"time"
 
-	"rain-yi-backend/model"
-	"rain-yi-backend/repository"
+	"cuetiy-backend/model"
+	"cuetiy-backend/repository"
 )
 
 const (
-	ChatExportFormat  = "rainyi-chat-export"
+	ChatExportFormat  = "cuetiy-chat-export"
 	ChatExportVersion = 1
 )
 
@@ -197,7 +197,7 @@ func (s *ImportService) ImportOne(userID int64, payload *ChatExportPayload) (*Im
 	}
 	nickname := payload.Conversation.AINickname
 	if nickname == "" {
-		nickname = "RainYi"
+		nickname = "Cuetiy"
 	}
 
 	conv := &model.Conversation{

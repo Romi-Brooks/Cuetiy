@@ -20,7 +20,7 @@ type Conversation struct {
 	ID          int64      `gorm:"primaryKey;autoIncrement" json:"id"`
 	UserID      int64      `gorm:"index;not null" json:"user_id"`
 	Title       string     `gorm:"size:200;not null;default:'情感陪伴'" json:"title"`
-	AINickname  string     `gorm:"size:100;not null;default:'RainYi'" json:"ai_nickname"`
+	AINickname  string     `gorm:"size:100;not null;default:'Cuetiy'" json:"ai_nickname"`
 	AIAvatar    string     `gorm:"size:500" json:"ai_avatar"`
 	PersonaID   *int64     `gorm:"index" json:"persona_id"`
 	CreatedAt   time.Time  `json:"created_at"`

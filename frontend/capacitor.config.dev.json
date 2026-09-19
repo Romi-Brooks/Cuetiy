@@ -1,6 +1,6 @@
 {
-  "appId": "com.rainyi.app",
-  "appName": "RainYi",
+  "appId": "com.cuetiy.app",
+  "appName": "Cuetiy",
   "webDir": "dist",
   "server": {
     "url": "http://192.168.1.100:5173",

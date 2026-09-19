@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"rain-yi-backend/config"
-	"rain-yi-backend/model"
+	"cuetiy-backend/config"
+	"cuetiy-backend/model"
 )
 
 // TTSService 调用 MiMo TTS（OpenAI 兼容），结果落到本地 files/tts

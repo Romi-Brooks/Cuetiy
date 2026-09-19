@@ -107,8 +107,8 @@ let typingTimer: ReturnType<typeof setInterval> | null = null
 let replyDelayTimer: ReturnType<typeof setTimeout> | null = null
 
 const MAX_RECONNECT_ATTEMPTS = 8
-const LAST_CONV_KEY = 'rainyi:last_conv_id'
-const DEBUG_STORE_KEY = 'rainyi:debug_store'
+const LAST_CONV_KEY = 'cuetiy:last_conv_id'
+const DEBUG_STORE_KEY = 'cuetiy:debug_store'
 
 type DebugPersist = {
   contextDebug?: ContextDebugInfo | null
@@ -663,7 +663,7 @@ export function selectAiNickname(s: ChatState): string {
     s.currentPersona?.nickname ||
     s.currentPersona?.name ||
     conv?.ai_nickname ||
-    'RainYi'
+    'Cuetiy'
   )
 }
 

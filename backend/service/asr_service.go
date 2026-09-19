@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"rain-yi-backend/config"
+	"cuetiy-backend/config"
 )
 
 // ASRService MiMo-V2.5-ASR：音频 → 文本

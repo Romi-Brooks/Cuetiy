@@ -8,13 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"rain-yi-backend/config"
-	"rain-yi-backend/controller"
-	"rain-yi-backend/middleware"
-	"rain-yi-backend/model"
-	"rain-yi-backend/repository"
-	"rain-yi-backend/service"
-	"rain-yi-backend/skill"
+	"cuetiy-backend/config"
+	"cuetiy-backend/controller"
+	"cuetiy-backend/middleware"
+	"cuetiy-backend/model"
+	"cuetiy-backend/repository"
+	"cuetiy-backend/service"
+	"cuetiy-backend/skill"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -219,7 +219,7 @@ func main() {
 	}
 
 	addr := fmt.Sprintf("%s:%s", cfg.ServerHost, cfg.ServerPort)
-	log.Printf("RainYi 服务启动于 %s", addr)
+	log.Printf("Cuetiy 服务启动于 %s", addr)
 	log.Printf("前端地址: %s", cfg.FrontendURL)
 
 	if err := http.ListenAndServe(addr, r); err != nil {

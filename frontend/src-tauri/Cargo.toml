@@ -1,8 +1,8 @@
 [package]
-name = "rain-yi"
+name = "cuetiy"
 version = "0.1.0"
-description = "RainYi desktop shell (thin / unified)"
-authors = ["RainYi"]
+description = "Cuetiy desktop shell (thin / unified)"
+authors = ["Cuetiy"]
 edition = "2021"
 
 [build-dependencies]

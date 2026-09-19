@@ -1,8 +1,8 @@
 package repository
 
 import (
-	"rain-yi-backend/config"
-	"rain-yi-backend/model"
+	"cuetiy-backend/config"
+	"cuetiy-backend/model"
 )
 
 type ConversationRepository struct{}
@@ -53,7 +53,7 @@ func (r *ConversationRepository) FindOrCreateDefault(userID int64) (*model.Conve
 	conv = model.Conversation{
 		UserID:     userID,
 		Title:      "情感陪伴",
-		AINickname: "RainYi",
+		AINickname: "Cuetiy",
 		AIAvatar:   "/static/default-avatar.svg",
 	}
 

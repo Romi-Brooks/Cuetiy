@@ -1,4 +1,4 @@
-# RainYi PostgreSQL 部署与数据迁移
+# Cuetiy PostgreSQL 部署与数据迁移
 
 > 代码侧已支持 `DB_DRIVER=postgres | mysql | sqlite`。  
 > 云端默认 **PostgreSQL**；本文只覆盖：**服务器装 PG → 写配置 → 启动 →（可选）从 MySQL 搬数据**。
@@ -30,9 +30,9 @@ sudo -u postgres psql
 ```
 
 ```sql
-CREATE USER rainyi WITH PASSWORD '改成强密码';
-CREATE DATABASE rain_yi OWNER rainyi ENCODING 'UTF8';
-GRANT ALL PRIVILEGES ON DATABASE rain_yi TO rainyi;
+CREATE USER cuetiy WITH PASSWORD '改成强密码';
+CREATE DATABASE cuetiy OWNER cuetiy ENCODING 'UTF8';
+GRANT ALL PRIVILEGES ON DATABASE cuetiy TO cuetiy;
 \q
 ```
 
@@ -43,7 +43,7 @@ GRANT ALL PRIVILEGES ON DATABASE rain_yi TO rainyi;
 listen_addresses = '*'
 
 # pg_hba.conf  （仅放行你的应用服务器 IP，不要 0.0.0.0/0 裸奔）
-host  rain_yi  rainyi  <应用服务器IP>/32  scram-sha-256
+host  cuetiy  cuetiy  <应用服务器IP>/32  scram-sha-256
 ```
 
 ```bash
@@ -62,9 +62,9 @@ sudo systemctl restart postgresql
 DB_DRIVER=postgres
 DB_HOST=127.0.0.1
 DB_PORT=5432
-DB_USER=rainyi
+DB_USER=cuetiy
 DB_PASSWORD=改成强密码
-DB_NAME=rain_yi
+DB_NAME=cuetiy
 DB_SSLMODE=disable
 
 SERVER_PORT=8080
@@ -80,7 +80,7 @@ SKILLS_DIR=./skills
 | 后端与 PG 同机 | `DB_HOST=127.0.0.1`，`DB_SSLMODE=disable` 即可 |
 | PG 在另一台机 | `DB_HOST=<pg内网IP>`，`pg_hba.conf` 放行应用机，建议 `DB_SSLMODE=require` |
 | 仍用 MySQL | `DB_DRIVER=mysql`，`DB_PORT=3306`，其余不变 |
-| 本地 EXE 离线包 | `DB_DRIVER=sqlite`，`SQLITE_PATH=./data/rainyi.db`（可省略） |
+| 本地 EXE 离线包 | `DB_DRIVER=sqlite`，`SQLITE_PATH=./data/cuetiy.db`（可省略） |
 
 表结构 **以启动时 GORM AutoMigrate 为准**。手动兜底脚本：
 
@@ -91,7 +91,7 @@ SKILLS_DIR=./skills
 
 ```bash
 cd backend/output   # 或你的部署目录
-./rainyi-backend    # Windows: rainyi-backend.exe
+./cuetiy-backend    # Windows: cuetiy-backend.exe
 ```
 
 日志应出现：`DB driver=postgres target=...`
@@ -115,8 +115,8 @@ curl -s http://127.0.0.1:8080/api/auth/login -X POST \
 
 ```bash
 # Debian: sudo apt install pgloader
-pgloader mysql://root:MYSQL密码@MYSQL主机/rain_yi \
-         postgresql://rainyi:PG密码@PG主机/rain_yi
+pgloader mysql://root:MYSQL密码@MYSQL主机/cuetiy \
+         postgresql://cuetiy:PG密码@PG主机/cuetiy
 ```
 
 注意：
@@ -126,7 +126,7 @@ pgloader mysql://root:MYSQL密码@MYSQL主机/rain_yi \
 3. 迁完后 **核对自增序列**（否则新插入可能主键冲突）：
 
 ```sql
--- 在 rain_yi 库执行，表名按实际（GORM 为复数 snake_case）
+-- 在 cuetiy 库执行，表名按实际（GORM 为复数 snake_case）
 SELECT setval(pg_get_serial_sequence('users','id'), COALESCE((SELECT MAX(id) FROM users), 0)+1, false);
 SELECT setval(pg_get_serial_sequence('conversations','id'), COALESCE((SELECT MAX(id) FROM conversations), 0)+1, false);
 SELECT setval(pg_get_serial_sequence('messages','id'), COALESCE((SELECT MAX(id) FROM messages), 0)+1, false);
@@ -147,9 +147,9 @@ SELECT setval(pg_get_serial_sequence('user_voices','id'), COALESCE((SELECT MAX(i
 ```bash
 # MySQL 导出（只导数据，不导建表）
 mysqldump -u root -p --no-create-info --complete-insert --skip-extended-insert \
-  rain_yi users conversations messages personas persona_files file_records \
+  cuetiy users conversations messages personas persona_files file_records \
   conversation_summaries conversation_memories conversation_skill_states \
-  chat_archives user_voices > rainyi_data.sql
+  chat_archives user_voices > cuetiy_data.sql
 ```
 
 再手工把 `INSERT` 转成 PG 可执行语句（bool 的 0/1、时间格式），或写小脚本按 GORM 模型读 MySQL、写 PG。  
@@ -174,7 +174,7 @@ mysqldump -u root -p --no-create-info --complete-insert --skip-extended-insert \
 | EXE-unified 离线 | 本机 SQLite + `data/` | `DB_DRIVER=sqlite` |
 | EXE/APK thin | 服务器 PG | 运行时配置 API URL（不打进包里） |
 
-本地 ↔ 云端搬迁：使用 App 内 **聊天导出/导入 JSON**（`rainyi-chat-export` v1），不依赖库引擎。
+本地 ↔ 云端搬迁：使用 App 内 **聊天导出/导入 JSON**（`cuetiy-chat-export` v1），不依赖库引擎。
 
 ---
 

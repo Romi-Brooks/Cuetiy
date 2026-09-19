@@ -1,4 +1,4 @@
-# RainYi APK thin（连服务器）
+# Cuetiy APK thin（连服务器）
 
 前置：
 
@@ -8,10 +8,10 @@
 
 ```powershell
 $env:ANDROID_HOME = '<Android SDK 路径>'
-$env:JAVA_HOME = '<JDK 17-21 路径>'   # 或 RAINYI_JDK=
+$env:JAVA_HOME = '<JDK 17-21 路径>'   # 或 CUETIY_JDK=
 ```
 
-脚本会优先用 `RAINYI_JDK` / 17–21 的 `JAVA_HOME`，并尝试 Android Studio 自带 JBR。
+脚本会优先用 `CUETIY_JDK` / 17–21 的 `JAVA_HOME`，并尝试 Android Studio 自带 JBR。
 
 ## 构建
 
@@ -19,7 +19,7 @@ $env:JAVA_HOME = '<JDK 17-21 路径>'   # 或 RAINYI_JDK=
 powershell -File scripts/build-apk-thin.ps1
 ```
 
-产物：`dist-packages/RainYi-APK-thin-debug.apk`
+产物：`dist-packages/Cuetiy-APK-thin-debug.apk`
 
 ## 使用
 

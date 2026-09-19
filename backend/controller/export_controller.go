@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"rain-yi-backend/service"
+	"cuetiy-backend/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -53,7 +53,7 @@ func (ctl *ExportController) ExportConversation(c *gin.Context) {
 		return
 	}
 
-	name := fmt.Sprintf("rainyi-chat-%d-%s.json", convID, time.Now().Format("20060102_150405"))
+	name := fmt.Sprintf("cuetiy-chat-%d-%s.json", convID, time.Now().Format("20060102_150405"))
 	c.Header("Content-Disposition", `attachment; filename="`+name+`"`)
 	c.Header("Content-Type", "application/json; charset=utf-8")
 	c.JSON(http.StatusOK, payload)
@@ -66,7 +66,7 @@ func (ctl *ExportController) ExportAll(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "导出失败: " + err.Error()})
 		return
 	}
-	name := fmt.Sprintf("rainyi-chat-all-%s.json", time.Now().Format("20060102_150405"))
+	name := fmt.Sprintf("cuetiy-chat-all-%s.json", time.Now().Format("20060102_150405"))
 	c.Header("Content-Disposition", `attachment; filename="`+name+`"`)
 	c.Header("Content-Type", "application/json; charset=utf-8")
 	c.JSON(http.StatusOK, bundle)

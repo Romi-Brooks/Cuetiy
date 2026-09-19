@@ -2,7 +2,7 @@
 
 import { platform } from '../platform'
 
-const API_KEY = 'rainyi:api_base'
+const API_KEY = 'cuetiy:api_base'
 /** unified 桌面包默认本机后端 */
 const UNIFIED_DEFAULT_API = 'http://127.0.0.1:8080'
 
@@ -62,7 +62,7 @@ export function getServerOrigin(): string {
 /** WebSocket 地址（含 /api/ws/chat） */
 export function getWsUrl(): string {
   try {
-    const custom = (localStorage.getItem('rainyi:ws_url') || import.meta.env.VITE_WS_URL || '').trim()
+    const custom = (localStorage.getItem('cuetiy:ws_url') || import.meta.env.VITE_WS_URL || '').trim()
     if (custom) {
       if (custom.includes('/api/ws/chat')) return custom
       const base = custom.replace(/\/+$/, '')
@@ -111,7 +111,7 @@ export async function pingServer(timeoutMs = 4000): Promise<{ ok: boolean; messa
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'ping@rainyi.local', password: 'invalid' }),
+      body: JSON.stringify({ email: 'ping@cuetiy.local', password: 'invalid' }),
       signal: ctrl.signal,
     })
     // 任意 HTTP 响应都说明后端在听

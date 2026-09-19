@@ -16,7 +16,7 @@ interface ActionState {
   clear: () => void
 }
 
-const KEY = 'rainyi:actions_enabled'
+const KEY = 'cuetiy:actions_enabled'
 
 function loadEnabled(): boolean {
   try {

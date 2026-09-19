@@ -1,6 +1,6 @@
 import type { Message } from '../types/api'
 
-const DB_NAME = 'RainYiCache'
+const DB_NAME = 'CuetiyCache'
 const DB_VERSION = 1
 const STORE_NAME = 'kv'
 

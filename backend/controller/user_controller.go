@@ -3,8 +3,8 @@ package controller
 import (
 	"net/http"
 
-	"rain-yi-backend/repository"
-	"rain-yi-backend/utils"
+	"cuetiy-backend/repository"
+	"cuetiy-backend/utils"
 
 	"github.com/gin-gonic/gin"
 )

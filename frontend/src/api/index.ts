@@ -104,11 +104,11 @@ export const chatDataAPI = {
   exportConversation: (convId: number) =>
     fetchExportJson(
       `/conversations/${convId}/export`,
-      `rainyi-chat-${convId}-${new Date().toISOString().slice(0, 10)}.json`,
+      `cuetiy-chat-${convId}-${new Date().toISOString().slice(0, 10)}.json`,
     ),
 
   exportAll: () =>
-    fetchExportJson(`/export/chat`, `rainyi-chat-all-${new Date().toISOString().slice(0, 10)}.json`),
+    fetchExportJson(`/export/chat`, `cuetiy-chat-all-${new Date().toISOString().slice(0, 10)}.json`),
 
   importChat: (payload: unknown) =>
     request<{ message: string; result?: Record<string, unknown>; results?: unknown[] }>(

@@ -1,20 +1,20 @@
--- RainYi MySQL 初始化 SQL（兼容旧部署）
+-- Cuetiy MySQL 初始化 SQL
 -- 默认驱动已是 PostgreSQL：见 schema.pg.sql
 -- 应用启动时 GORM AutoMigrate 会自动建表
 -- 本脚本仅用于：建库 + 建账号（表结构以 AutoMigrate 为准）
 -- 使用本文件时请设置 DB_DRIVER=mysql
 
-CREATE DATABASE IF NOT EXISTS rain_yi
+CREATE DATABASE IF NOT EXISTS cuetiy
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 
 -- 可选：专用账号（密码请改成强密码）
--- CREATE USER IF NOT EXISTS 'rainyi'@'%' IDENTIFIED BY 'CHANGE_ME';
--- GRANT ALL PRIVILEGES ON rain_yi.* TO 'rainyi'@'%';
+-- CREATE USER IF NOT EXISTS 'cuetiy'@'%' IDENTIFIED BY 'CHANGE_ME';
+-- GRANT ALL PRIVILEGES ON cuetiy.* TO 'cuetiy'@'%';
 -- FLUSH PRIVILEGES;
 
 -- 手动建表兜底（与 backend/model/models.go 对应，仅在 AutoMigrate 失败时使用）
-USE rain_yi;
+USE cuetiy;
 
 CREATE TABLE IF NOT EXISTS users (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT NOT NULL,
   title VARCHAR(200) NOT NULL DEFAULT '情感陪伴',
-  ai_nickname VARCHAR(100) NOT NULL DEFAULT 'RainYi',
+  ai_nickname VARCHAR(100) NOT NULL DEFAULT 'Cuetiy',
   ai_avatar VARCHAR(500),
   persona_id BIGINT NULL,
   created_at DATETIME(3) NULL,

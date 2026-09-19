@@ -1,4 +1,4 @@
-# RainYi EXE unified + 便携包（本机 SQLite）
+# Cuetiy EXE unified + 便携包（本机 SQLite）
 
 ## 安装包构建
 
@@ -14,15 +14,15 @@ powershell -File scripts/build-exe-unified.ps1
 powershell -File scripts/build-portable-unified.ps1
 ```
 
-产物：`dist-packages/RainYi-unified-portable.zip`（需先完成 unified 构建）。
+产物：`dist-packages/Cuetiy-unified-portable.zip`（需先完成 unified 构建）。
 
 便携目录：
 
 ```text
-RainYi/
-  RainYi.exe
-  rainyi-backend.exe
-  data/rainyi.db      # 首次启动生成
+Cuetiy/
+  Cuetiy.exe
+  cuetiy-backend.exe
+  data/cuetiy.db      # 首次启动生成
   data/files/
   skills/
   .env
@@ -31,7 +31,7 @@ RainYi/
 
 ## 使用
 
-1. 双击 `RainYi.exe`  
+1. 双击 `Cuetiy.exe`  
 2. 自动拉起本机后端 `http://127.0.0.1:8080` + SQLite  
 3. 注册本地账号  
 4. 「我的 → 数据与服务器」填 DeepSeek / MiMo Key（不回显）  
@@ -44,7 +44,7 @@ RainYi/
 
 ```env
 DB_DRIVER=sqlite
-SQLITE_PATH=./data/rainyi.db
+SQLITE_PATH=./data/cuetiy.db
 SERVER_HOST=127.0.0.1
 SERVER_PORT=8080
 REDIS_HOST=

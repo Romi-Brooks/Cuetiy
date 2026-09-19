@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Default RainYi desktop capabilities",
+  "description": "Default Cuetiy desktop capabilities",
   "windows": ["main"],
   "permissions": [
     "core:default",

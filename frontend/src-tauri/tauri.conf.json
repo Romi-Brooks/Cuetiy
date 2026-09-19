@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "RainYi",
+  "productName": "Cuetiy",
   "version": "0.1.0",
-  "identifier": "com.rainyi.desktop",
+  "identifier": "com.cuetiy.desktop",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:5173",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "RainYi",
+        "title": "Cuetiy",
         "width": 1100,
         "height": 760,
         "minWidth": 360,
@@ -39,7 +39,7 @@
       "resources/env/.env.unified",
       "resources/skills/*"
     ],
-    "externalBin": ["binaries/rainyi-backend"],
+    "externalBin": ["binaries/cuetiy-backend"],
     "linux": {
       "deb": {
         "depends": []

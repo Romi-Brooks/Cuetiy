@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"rain-yi-backend/config"
+	"cuetiy-backend/config"
 )
 
 // EmotionLabel 情绪标签

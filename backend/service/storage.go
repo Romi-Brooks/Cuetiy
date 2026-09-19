@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"rain-yi-backend/config"
-	"rain-yi-backend/model"
-	"rain-yi-backend/repository"
+	"cuetiy-backend/config"
+	"cuetiy-backend/model"
+	"cuetiy-backend/repository"
 
 	"github.com/google/uuid"
 )

@@ -4,8 +4,8 @@ import (
 	"log"
 	"sync"
 
-	"rain-yi-backend/model"
-	"rain-yi-backend/repository"
+	"cuetiy-backend/model"
+	"cuetiy-backend/repository"
 )
 
 // MessageWriter 消息异步落库：聊天路径不阻塞 MySQL，本轮结束后后台写入

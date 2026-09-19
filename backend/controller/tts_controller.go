@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"rain-yi-backend/model"
-	"rain-yi-backend/repository"
-	"rain-yi-backend/service"
-	"rain-yi-backend/utils"
+	"cuetiy-backend/model"
+	"cuetiy-backend/repository"
+	"cuetiy-backend/service"
+	"cuetiy-backend/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"

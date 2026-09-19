@@ -1,4 +1,4 @@
-# RainYi
+# Cuetiy
 
 > [English](../README.md) | **中文**
 
@@ -53,7 +53,7 @@ SQLite 示例：
 
 ```env
 DB_DRIVER=sqlite
-SQLITE_PATH=./data/rainyi.db
+SQLITE_PATH=./data/cuetiy.db
 SERVER_PORT=8080
 REDIS_HOST=
 ```

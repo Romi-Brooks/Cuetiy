@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"rain-yi-backend/config"
-	"rain-yi-backend/model"
+	"cuetiy-backend/config"
+	"cuetiy-backend/model"
 )
 
 // SummaryService 由 AI 做滚动摘要压缩

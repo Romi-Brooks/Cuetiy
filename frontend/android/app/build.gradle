@@ -5,10 +5,10 @@ ext {
 apply plugin: 'com.android.application'
 
 android {
-    namespace "com.rainyi.app"
+    namespace "com.cuetiy.app"
     compileSdkVersion rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.rainyi.app"
+        applicationId "com.cuetiy.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

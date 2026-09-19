@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"rain-yi-backend/config"
+	"cuetiy-backend/config"
 
 	"github.com/gin-gonic/gin"
 )

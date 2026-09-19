@@ -790,7 +790,7 @@ export function MainChat() {
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-800/50 text-gray-400 dark:text-gray-500">
                 <h3 className="text-lg font-medium text-gray-600 dark:text-gray-400 mb-2">
-                  欢迎使用 RainYi
+                  欢迎使用 Cuetiy
                 </h3>
                 <p className="text-sm text-center max-w-xs px-4">
                   到「人格」页选择角色并点「对话」，即可开始专属聊天

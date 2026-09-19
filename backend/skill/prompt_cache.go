@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"rain-yi-backend/config"
+	"cuetiy-backend/config"
 )
 
 type PromptCache struct {

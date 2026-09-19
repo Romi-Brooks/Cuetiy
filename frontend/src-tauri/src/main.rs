@@ -1,6 +1,6 @@
-// RainYi desktop shell
+// Cuetiy desktop shell
 // thin: 仅 WebView，登录页配置 API
-// unified: sidecar 启动 rainyi-backend（SQLite），默认 http://127.0.0.1:8080
+// unified: sidecar 启动 cuetiy-backend（SQLite），默认 http://127.0.0.1:8080
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -22,7 +22,7 @@ mod string_helper {
 
     impl Mode {
         pub fn detect() -> Mode {
-            if let Ok(m) = std::env::var("RAIN_YI_PACKAGE") {
+            if let Ok(m) = std::env::var("CUETIY_PACKAGE") {
                 let m = m.trim().to_lowercase();
                 if m == "unified" {
                     return Mode::Unified;
@@ -31,8 +31,8 @@ mod string_helper {
                     return Mode::Thin;
                 }
             }
-            // 编译期写入（tauri build 时环境变量 RAIN_YI_PACKAGE）
-            match option_env!("RAIN_YI_PACKAGE") {
+            // 编译期写入（tauri build 时环境变量 CUETIY_PACKAGE）
+            match option_env!("CUETIY_PACKAGE") {
                 Some(m) if m.trim().eq_ignore_ascii_case("unified") => Mode::Unified,
                 _ => Mode::Thin,
             }
@@ -76,12 +76,12 @@ fn start_unified_backend(app: &tauri::AppHandle) {
     let env_path = work_dir.join(".env");
     if !env_path.exists() {
         let default_env = format!(
-            "DB_DRIVER=sqlite\nSQLITE_PATH=./data/rainyi.db\nSERVER_HOST=127.0.0.1\nSERVER_PORT=8080\nJWT_SECRET=rainyi-local-desktop\nSTORAGE_DIR=./data/files\nARCHIVE_DIR=./data/archives\nSKILLS_DIR=./skills\nRUNTIME_DIR=.\nREDIS_HOST=\n"
+            "DB_DRIVER=sqlite\nSQLITE_PATH=./data/cuetiy.db\nSERVER_HOST=127.0.0.1\nSERVER_PORT=8080\nJWT_SECRET=cuetiy-local-desktop\nSTORAGE_DIR=./data/files\nARCHIVE_DIR=./data/archives\nSKILLS_DIR=./skills\nRUNTIME_DIR=.\nREDIS_HOST=\n"
         );
         let _ = std::fs::write(&env_path, default_env);
     }
 
-    let sidecar = app.shell().sidecar("rainyi-backend");
+    let sidecar = app.shell().sidecar("cuetiy-backend");
     match sidecar {
         Ok(cmd) => {
             let cmd = cmd
@@ -89,12 +89,12 @@ fn start_unified_backend(app: &tauri::AppHandle) {
                 .env("DB_DRIVER", "sqlite")
                 .env(
                     "SQLITE_PATH",
-                    work_dir.join("data").join("rainyi.db").to_string_lossy().to_string(),
+                    work_dir.join("data").join("cuetiy.db").to_string_lossy().to_string(),
                 )
                 .env("SERVER_HOST", "127.0.0.1")
                 .env(
                     "SERVER_PORT",
-                    std::env::var("RAIN_YI_BACKEND_PORT").unwrap_or_else(|_| "8080".into()),
+                    std::env::var("CUETIY_BACKEND_PORT").unwrap_or_else(|_| "8080".into()),
                 )
                 .env(
                     "STORAGE_DIR",
@@ -112,7 +112,7 @@ fn start_unified_backend(app: &tauri::AppHandle) {
                 .env("REDIS_HOST", "");
             match cmd.spawn() {
                 Ok((mut rx, _child)) => {
-                    eprintln!("[rainyi] unified backend starting in {:?}", work_dir);
+                    eprintln!("[cuetiy] unified backend starting in {:?}", work_dir);
                     std::thread::spawn(move || {
                         while let Some(event) = rx.blocking_recv() {
                             match event {
@@ -131,11 +131,11 @@ fn start_unified_backend(app: &tauri::AppHandle) {
                         }
                     });
                 }
-                Err(e) => eprintln!("[rainyi] failed to spawn backend: {e}"),
+                Err(e) => eprintln!("[cuetiy] failed to spawn backend: {e}"),
             }
         }
         Err(e) => {
-            eprintln!("[rainyi] unified sidecar missing (ok for thin builds): {e}");
+            eprintln!("[cuetiy] unified sidecar missing (ok for thin builds): {e}");
         }
     }
 }
@@ -143,10 +143,10 @@ fn start_unified_backend(app: &tauri::AppHandle) {
 fn inject_unified_defaults(win: &tauri::WebviewWindow) {
     // 仅在用户未手写 API 时写入本机默认，避免覆盖 thin 用户配置
     let js = r#"try{
-      if(!localStorage.getItem('rainyi:api_base')){
-        localStorage.setItem('rainyi:api_base','http://127.0.0.1:8080');
+      if(!localStorage.getItem('cuetiy:api_base')){
+        localStorage.setItem('cuetiy:api_base','http://127.0.0.1:8080');
       }
-      localStorage.setItem('rainyi:package','unified');
+      localStorage.setItem('cuetiy:package','unified');
     }catch(e){}"#;
     let _ = win.eval(js);
 }
@@ -168,9 +168,9 @@ fn main() {
             }
             if let Some(win) = app.get_webview_window("main") {
                 let title = if mode.is_unified() {
-                    "RainYi · 本地数据"
+                    "Cuetiy · 本地数据"
                 } else {
-                    "RainYi"
+                    "Cuetiy"
                 };
                 let _ = win.set_title(title);
                 if mode.is_unified() {
@@ -181,7 +181,7 @@ fn main() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while running RainYi tauri application")
+        .expect("error while running Cuetiy tauri application")
         .run(|_app, event| {
             if let RunEvent::Exit = event {
                 // sidecar 随进程退出

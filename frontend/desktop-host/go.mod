@@ -1,4 +1,4 @@
-module rain-yi-desktop-host
+module cuetiy-desktop-host
 
 go 1.26.0
 

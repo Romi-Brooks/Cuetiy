@@ -9,12 +9,12 @@ import (
 	"strconv"
 	"strings"
 
-	"rain-yi-backend/config"
-	"rain-yi-backend/model"
-	"rain-yi-backend/repository"
-	"rain-yi-backend/service"
-	"rain-yi-backend/skill"
-	"rain-yi-backend/utils"
+	"cuetiy-backend/config"
+	"cuetiy-backend/model"
+	"cuetiy-backend/repository"
+	"cuetiy-backend/service"
+	"cuetiy-backend/skill"
+	"cuetiy-backend/utils"
 
 	"github.com/gin-gonic/gin"
 )

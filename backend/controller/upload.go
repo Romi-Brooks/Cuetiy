@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"rain-yi-backend/model"
-	"rain-yi-backend/repository"
-	"rain-yi-backend/service"
+	"cuetiy-backend/model"
+	"cuetiy-backend/repository"
+	"cuetiy-backend/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"

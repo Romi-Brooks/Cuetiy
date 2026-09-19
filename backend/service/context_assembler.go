@@ -6,9 +6,9 @@ import (
 	"log"
 	"strings"
 
-	"rain-yi-backend/config"
-	"rain-yi-backend/model"
-	"rain-yi-backend/repository"
+	"cuetiy-backend/config"
+	"cuetiy-backend/model"
+	"cuetiy-backend/repository"
 )
 
 // PromptPart system 分段（Debug 用）

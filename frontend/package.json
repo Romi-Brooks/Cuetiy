@@ -1,5 +1,5 @@
 {
-  "name": "rain-yi-frontend",
+  "name": "cuetiy-frontend",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -12,10 +12,10 @@
     "cap:open": "npx cap open android",
     "cap:build": "pnpm build && npx cap sync && cd android && gradlew assembleDebug",
     "tauri": "tauri",
-    "tauri:dev": "cross-env RAIN_YI_PACKAGE=thin tauri dev",
-    "tauri:dev:unified": "cross-env RAIN_YI_PACKAGE=unified tauri dev",
-    "tauri:build:thin": "pnpm build && cross-env RAIN_YI_PACKAGE=thin tauri build",
-    "tauri:build:unified": "pnpm build && cross-env RAIN_YI_PACKAGE=unified tauri build",
+    "tauri:dev": "cross-env CUETIY_PACKAGE=thin tauri dev",
+    "tauri:dev:unified": "cross-env CUETIY_PACKAGE=unified tauri dev",
+    "tauri:build:thin": "pnpm build && cross-env CUETIY_PACKAGE=thin tauri build",
+    "tauri:build:unified": "pnpm build && cross-env CUETIY_PACKAGE=unified tauri build",
     "apk:thin": "pnpm build && npx cap sync android && cd android && gradlew.bat assembleDebug"
   },
   "dependencies": {

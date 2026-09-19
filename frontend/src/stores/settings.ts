@@ -23,7 +23,7 @@ interface SettingsState extends HumanizeSettings {
   resetHumanize: () => void
 }
 
-const KEY = 'rainyi:humanize'
+const KEY = 'cuetiy:humanize'
 
 const defaults: HumanizeSettings = {
   // 开启后：AI 回复到达时仍保持「对方正在输入中」，按字数停够时间再一次性上屏

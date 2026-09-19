@@ -1,4 +1,4 @@
-# RainYi Linux（thin / unified / portable）
+# Cuetiy Linux（thin / unified / portable）
 
 在 Linux 上运行完整桌面程序（不只是后端）。Go sidecar 纯 Go SQLite，无需 CGO。
 
@@ -32,7 +32,7 @@ Windows 无法完整交叉编译 Linux GUI；只能编 Linux 后端：
 ```powershell
 cd backend
 $env:CGO_ENABLED='0'; $env:GOOS='linux'; $env:GOARCH='amd64'
-go build -ldflags '-s -w' -o output/rainyi-backend-linux-amd64 ./cmd/main.go
+go build -ldflags '-s -w' -o output/cuetiy-backend-linux-amd64 ./cmd/main.go
 ```
 
 ## 用户安装
@@ -40,7 +40,7 @@ go build -ldflags '-s -w' -o output/rainyi-backend-linux-amd64 ./cmd/main.go
 **thin / unified（.deb）**
 
 ```bash
-sudo dpkg -i RainYi_*.deb
+sudo dpkg -i Cuetiy_*.deb
 # 运行库: sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 librsvg2-2
 ```
 
@@ -49,9 +49,9 @@ thin：登录页填服务器 API。unified：默认本机 `127.0.0.1:8080`。
 **portable**
 
 ```bash
-tar -xzf RainYi-linux-portable.tar.gz
-cd RainYi-linux-portable
-./RainYi
+tar -xzf Cuetiy-linux-portable.tar.gz
+cd Cuetiy-linux-portable
+./Cuetiy
 ```
 
 密钥：App「我的 → 数据与服务器」，不回显。
@@ -59,8 +59,8 @@ cd RainYi-linux-portable
 **仅后端（给 thin/网页用）**
 
 ```bash
-DB_DRIVER=sqlite SQLITE_PATH=./data/rainyi.db \
-SERVER_HOST=0.0.0.0 SERVER_PORT=8080 ./rainyi-backend
+DB_DRIVER=sqlite SQLITE_PATH=./data/cuetiy.db \
+SERVER_HOST=0.0.0.0 SERVER_PORT=8080 ./cuetiy-backend
 ```
 
 服务器 + PostgreSQL 见 [PG-MIGRATION.md](PG-MIGRATION.md)。
@@ -70,7 +70,7 @@ SERVER_HOST=0.0.0.0 SERVER_PORT=8080 ./rainyi-backend
 Tauri 要求：
 
 ```text
-frontend/src-tauri/binaries/rainyi-backend-x86_64-unknown-linux-gnu
+frontend/src-tauri/binaries/cuetiy-backend-x86_64-unknown-linux-gnu
 ```
 
 脚本已自动处理。

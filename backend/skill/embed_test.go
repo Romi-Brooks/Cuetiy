@@ -3,7 +3,7 @@ import (
   "os"
   "path/filepath"
   "testing"
-  "rain-yi-backend/skill"
+  "cuetiy-backend/skill"
 )
 func TestEnsureSkillsDir(t *testing.T) {
   dir := filepath.Join(t.TempDir(), "skills")

@@ -1,4 +1,4 @@
-# RainYi EXE thin（连服务器）
+# Cuetiy EXE thin（连服务器）
 
 前置：Go、Node/pnpm、Rust（MSVC）、WebView2。详见本机 Rust/VS 安装说明。
 
@@ -15,15 +15,15 @@ powershell -File scripts/build-exe-thin.ps1
 ```powershell
 cd backend
 $env:CGO_ENABLED = '0'
-go build -ldflags '-s -w' -o ../frontend/src-tauri/binaries/rainyi-backend.exe ./cmd/main.go
+go build -ldflags '-s -w' -o ../frontend/src-tauri/binaries/cuetiy-backend.exe ./cmd/main.go
 # Tauri sidecar 需要 target 名
-Copy-Item ../frontend/src-tauri/binaries/rainyi-backend.exe `
-  ../frontend/src-tauri/binaries/rainyi-backend-x86_64-pc-windows-msvc.exe
+Copy-Item ../frontend/src-tauri/binaries/cuetiy-backend.exe `
+  ../frontend/src-tauri/binaries/cuetiy-backend-x86_64-pc-windows-msvc.exe
 
 cd ../frontend
 pnpm install
 pnpm type-check
-$env:RAIN_YI_PACKAGE = 'thin'
+$env:CUETIY_PACKAGE = 'thin'
 pnpm exec tauri build
 ```
 
@@ -34,11 +34,11 @@ frontend/src-tauri/target/release/bundle/nsis/*-setup.exe
 frontend/src-tauri/target/release/bundle/msi/*.msi
 ```
 
-复制到 `dist-packages/` 并改名，例如 `RainYi-EXE-thin-setup.exe`。
+复制到 `dist-packages/` 并改名，例如 `Cuetiy-EXE-thin-setup.exe`。
 
 ## 使用
 
-1. 安装后打开 RainYi  
+1. 安装后打开 Cuetiy  
 2. 登录页 →「服务器设置」→ 填 `http://<服务器IP>:8080`  
 3. 保存并测试 → 登录  
 
@@ -48,7 +48,7 @@ frontend/src-tauri/target/release/bundle/msi/*.msi
 
 ```powershell
 cd frontend
-$env:RAIN_YI_PACKAGE = 'thin'
+$env:CUETIY_PACKAGE = 'thin'
 pnpm exec tauri dev
 ```
 

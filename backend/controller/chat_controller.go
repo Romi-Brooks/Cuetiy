@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"rain-yi-backend/config"
-	"rain-yi-backend/middleware"
-	"rain-yi-backend/model"
-	"rain-yi-backend/repository"
-	"rain-yi-backend/service"
-	"rain-yi-backend/utils"
+	"cuetiy-backend/config"
+	"cuetiy-backend/middleware"
+	"cuetiy-backend/model"
+	"cuetiy-backend/repository"
+	"cuetiy-backend/service"
+	"cuetiy-backend/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"

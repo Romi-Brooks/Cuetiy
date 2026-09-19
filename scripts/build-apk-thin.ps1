@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-# RainYi APK thin — 需要 ANDROID_HOME + JDK 17-21
+# Cuetiy APK thin — 需要 ANDROID_HOME + JDK 17-21
 $sys = Join-Path $env:SystemRoot 'System32'
 if ($sys -and (Test-Path -LiteralPath $sys)) {
   $env:PATH = "$sys;$env:PATH"
@@ -24,7 +24,7 @@ function Get-JavaMajor {
 
 function Find-JdkHome {
   $list = @()
-  if ($env:RAINYI_JDK) { $list += $env:RAINYI_JDK }
+  if ($env:CUETIY_JDK) { $list += $env:CUETIY_JDK }
   if ($env:JAVA_HOME) { $list += $env:JAVA_HOME }
 
   $roots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:LOCALAPPDATA, 'D:\Program', 'C:\Program Files', 'C:\Program Files (x86)')
@@ -60,7 +60,7 @@ if (-not $env:ANDROID_HOME -or -not (Test-Path -LiteralPath $env:ANDROID_HOME)) 
 }
 
 $jdkInfo = Find-JdkHome
-if (-not $jdkInfo) { throw 'JDK not found. Set RAINYI_JDK or JAVA_HOME to JDK 17-21.' }
+if (-not $jdkInfo) { throw 'JDK not found. Set CUETIY_JDK or JAVA_HOME to JDK 17-21.' }
 if ($jdkInfo.Major -lt 17 -or $jdkInfo.Major -gt 21) {
   Write-Warning ("JDK major={0} may fail Android Gradle Plugin; prefer 17-21." -f $jdkInfo.Major)
 }
@@ -103,6 +103,6 @@ if (!(Test-Path -LiteralPath $apk)) { throw "APK not found: $apk" }
 
 $out = Join-Path $repo 'dist-packages'
 New-Item -ItemType Directory -Force -Path $out | Out-Null
-Copy-Item -LiteralPath $apk -Destination (Join-Path $out 'RainYi-APK-thin-debug.apk') -Force
-Get-Item (Join-Path $out 'RainYi-APK-thin-debug.apk') | Format-List FullName, Length
+Copy-Item -LiteralPath $apk -Destination (Join-Path $out 'Cuetiy-APK-thin-debug.apk') -Force
+Get-Item (Join-Path $out 'Cuetiy-APK-thin-debug.apk') | Format-List FullName, Length
 Write-Host '==> APK done'

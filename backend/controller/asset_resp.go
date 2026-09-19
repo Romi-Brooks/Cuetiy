@@ -3,8 +3,8 @@ package controller
 import (
 	"net/http"
 
-	"rain-yi-backend/model"
-	"rain-yi-backend/utils"
+	"cuetiy-backend/model"
+	"cuetiy-backend/utils"
 )
 
 func absUserJSON(r *http.Request, u *model.User) map[string]any {

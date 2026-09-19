@@ -19,7 +19,7 @@ type Config struct {
 	DBName     string
 	// DBSSLMode 仅 postgres：disable / require / verify-ca / verify-full
 	DBSSLMode string
-	// SQLitePath 仅 sqlite：库文件路径，默认 <RuntimeDir>/data/rainyi.db
+	// SQLitePath 仅 sqlite：库文件路径，默认 <RuntimeDir>/data/cuetiy.db
 	SQLitePath string
 
 	ServerPort string
@@ -114,12 +114,12 @@ func LoadConfig() *Config {
 		DBPort:         getEnv("DB_PORT", "5432"),
 		DBUser:         getEnv("DB_USER", "postgres"),
 		DBPassword:     getEnv("DB_PASSWORD", ""),
-		DBName:         getEnv("DB_NAME", "rain_yi"),
+		DBName:         getEnv("DB_NAME", "cuetiy"),
 		DBSSLMode:      getEnv("DB_SSLMODE", "disable"),
 		SQLitePath:     getEnv("SQLITE_PATH", ""),
 		ServerPort:     getEnv("SERVER_PORT", "8080"),
 		ServerHost:     getEnv("SERVER_HOST", "0.0.0.0"),
-		JWTSecret:      getEnv("JWT_SECRET", "rain-yi-secret"),
+		JWTSecret:      getEnv("JWT_SECRET", "cuetiy-secret"),
 		DeepSeekAPIKey: getEnv("DEEPSEEK_API_KEY", ""),
 		DeepSeekAPIURL: getEnv("DEEPSEEK_API_URL", "https://api.deepseek.com"),
 		FrontendURL:    getEnv("FRONTEND_URL", "http://localhost:5173"),

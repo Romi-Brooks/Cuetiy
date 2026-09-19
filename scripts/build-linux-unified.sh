@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# RainYi Linux · unified（内嵌后端 + SQLite，安装包 deb/AppImage/rpm）
+# Cuetiy Linux · unified（内嵌后端 + SQLite，安装包 deb/AppImage/rpm）
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FRONTEND="$ROOT/frontend"
@@ -13,18 +13,18 @@ export CGO_ENABLED=0
 
 echo "==> backend sidecar ($TRIPLE)"
 GOOS=linux GOARCH=amd64 go build -ldflags '-s -w' \
-  -o "$BIN_DIR/rainyi-backend-x86_64-unknown-linux-gnu" "$BACKEND/cmd/main.go"
-chmod +x "$BIN_DIR/rainyi-backend-x86_64-unknown-linux-gnu"
+  -o "$BIN_DIR/cuetiy-backend-x86_64-unknown-linux-gnu" "$BACKEND/cmd/main.go"
+chmod +x "$BIN_DIR/cuetiy-backend-x86_64-unknown-linux-gnu"
 if [[ "$TRIPLE" != "x86_64-unknown-linux-gnu" ]]; then
-  cp "$BIN_DIR/rainyi-backend-x86_64-unknown-linux-gnu" "$BIN_DIR/rainyi-backend-${TRIPLE}"
-  chmod +x "$BIN_DIR/rainyi-backend-${TRIPLE}"
+  cp "$BIN_DIR/cuetiy-backend-x86_64-unknown-linux-gnu" "$BIN_DIR/cuetiy-backend-${TRIPLE}"
+  chmod +x "$BIN_DIR/cuetiy-backend-${TRIPLE}"
 fi
 
 echo "==> frontend + tauri unified"
 cd "$FRONTEND"
 pnpm install --prefer-offline
 pnpm type-check
-export RAIN_YI_PACKAGE=unified
+export CUETIY_PACKAGE=unified
 pnpm exec tauri build
 
 echo "==> copy bundles"

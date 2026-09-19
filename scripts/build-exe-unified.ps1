@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-# RainYi EXE unified — 依赖: Go, pnpm, Rust
+# Cuetiy EXE unified — 依赖: Go, pnpm, Rust
 $repo = Resolve-Path (Join-Path $PSScriptRoot '..')
 $frontend = Join-Path $repo 'frontend'
 $backend = Join-Path $repo 'backend'
@@ -17,14 +17,14 @@ if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { throw 'cargo not f
 if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) { throw 'pnpm not found in PATH' }
 
 $env:CGO_ENABLED = '0'
-$env:RAIN_YI_PACKAGE = 'unified'
+$env:CUETIY_PACKAGE = 'unified'
 
 Write-Host '==> Go backend sidecar'
 New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 Set-Location $backend
-go build -ldflags '-s -w' -o (Join-Path $binDir 'rainyi-backend.exe') ./cmd/main.go
+go build -ldflags '-s -w' -o (Join-Path $binDir 'cuetiy-backend.exe') ./cmd/main.go
 if ($LASTEXITCODE -ne 0) { throw 'go build failed' }
-Copy-Item (Join-Path $binDir 'rainyi-backend.exe') (Join-Path $binDir "rainyi-backend-$triple.exe") -Force
+Copy-Item (Join-Path $binDir 'cuetiy-backend.exe') (Join-Path $binDir "cuetiy-backend-$triple.exe") -Force
 
 $skillsDst = Join-Path $frontend 'src-tauri\resources\skills'
 $skillsSrc = Join-Path $backend 'skill\default_skills'
@@ -45,7 +45,7 @@ $out = Join-Path $repo 'dist-packages'
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 Get-ChildItem (Join-Path $frontend 'src-tauri\target\release\bundle') -Recurse -Include *.exe,*.msi -ErrorAction SilentlyContinue |
   ForEach-Object {
-    $name = "RainYi-EXE-unified-$($_.Name)"
+    $name = "Cuetiy-EXE-unified-$($_.Name)"
     Copy-Item $_.FullName (Join-Path $out $name) -Force
     Write-Host "  $name"
   }

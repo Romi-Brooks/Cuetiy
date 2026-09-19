@@ -280,7 +280,7 @@ export function ServerDataPanel({
         <div className="border-t border-gray-100 dark:border-gray-700 pt-4 space-y-2">
           <span className="text-sm text-gray-500 dark:text-gray-400">聊天数据</span>
           <p className="text-xs text-gray-400">
-            导出为 rainyi-chat-export JSON；导入会在当前账号下新建会话（ID 重映射）
+            导出为 cuetiy-chat-export JSON；导入会在当前账号下新建会话（ID 重映射）
           </p>
           <div className="flex flex-col sm:flex-row flex-wrap gap-2">
             <button
