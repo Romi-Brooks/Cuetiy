@@ -1,11 +1,17 @@
 # RainYi APK thin（连服务器）
 
-前置：JDK、Android SDK（compileSdk 35）、Node/pnpm。环境变量：
+前置：
+
+- Node / pnpm
+- Android SDK（compileSdk 35）
+- **JDK 17–21**（不要用 22+，Gradle 会挂）
 
 ```powershell
-$env:JAVA_HOME = '<JDK路径>'
-$env:ANDROID_HOME = '<Android SDK路径>'
+$env:ANDROID_HOME = '<Android SDK 路径>'
+$env:JAVA_HOME = '<JDK 17-21 路径>'   # 或 RAINYI_JDK=
 ```
+
+脚本会优先用 `RAINYI_JDK` / 17–21 的 `JAVA_HOME`，并尝试 Android Studio 自带 JBR。
 
 ## 构建
 
@@ -13,24 +19,7 @@ $env:ANDROID_HOME = '<Android SDK路径>'
 powershell -File scripts/build-apk-thin.ps1
 ```
 
-或手动：
-
-```powershell
-cd frontend
-$env:VITE_API_URL = ''
-pnpm exec vite build
-pnpm exec cap sync android
-cd android
-./gradlew.bat assembleDebug
-```
-
-产物：
-
-```text
-frontend/android/app/build/outputs/apk/debug/app-debug.apk
-```
-
-复制到 `dist-packages/`，例如 `RainYi-APK-thin-debug.apk`。
+产物：`dist-packages/RainYi-APK-thin-debug.apk`
 
 ## 使用
 
@@ -38,10 +27,10 @@ frontend/android/app/build/outputs/apk/debug/app-debug.apk
 2. 登录页 →「服务器设置」→ `http://<服务器IP>:8080`  
 3. 保存并测试 → 登录  
 
-服务器需放行 8080；密钥在 App「数据与服务器」里填。
+密钥在 App「数据与服务器」填写（不回显）。
 
 ## 说明
 
-- 构建不写死 API，用户运行时配置  
-- 当前为 debug 包；发布请配置签名后 `assembleRelease`  
+- 构建不写死 API，运行时配置  
+- debug 包可直接装；发布需签名 `assembleRelease`  
 - 局域网可用 HTTP；公网建议 HTTPS  

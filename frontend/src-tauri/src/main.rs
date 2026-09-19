@@ -38,15 +38,16 @@ mod string_helper {
             }
         }
 
+        pub fn is_unified(self) -> bool {
+            matches!(self, Mode::Unified)
+        }
+
+        #[allow(dead_code)]
         pub fn as_str(self) -> &'static str {
             match self {
                 Mode::Unified => "unified",
                 Mode::Thin => "thin",
             }
-        }
-
-        pub fn is_unified(self) -> bool {
-            matches!(self, Mode::Unified)
         }
     }
 }

@@ -6,6 +6,16 @@ $backend = Join-Path $repo 'backend'
 $binDir = Join-Path $frontend 'src-tauri\binaries'
 $triple = 'x86_64-pc-windows-msvc'
 
+$sys = Join-Path $env:SystemRoot 'System32'
+if ($sys -and (Test-Path $sys)) { $env:PATH = "$sys;$env:PATH" }
+$cargoDir = Join-Path $env:USERPROFILE '.cargo\bin'
+if (Test-Path $cargoDir) { $env:PATH = "$cargoDir;$env:PATH" }
+foreach ($n in @("$env:ProgramFiles\nodejs")) {
+  if ($n -and (Test-Path $n)) { $env:PATH = "$n;$env:PATH" }
+}
+if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { throw 'cargo not found in PATH' }
+if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) { throw 'pnpm not found in PATH' }
+
 $env:CGO_ENABLED = '0'
 $env:RAIN_YI_PACKAGE = 'unified'
 
