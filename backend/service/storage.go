@@ -2,11 +2,11 @@ package service
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"log"
 	"mime/multipart"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -15,8 +15,6 @@ import (
 	"rain-yi-backend/repository"
 
 	"github.com/google/uuid"
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 type FileStorage interface {
@@ -27,117 +25,71 @@ type FileStorage interface {
 	SaveToPath(objectName string, userID int64, fileType string, referenceType string, referenceID int64, originalName string, data io.Reader, size int64) (*model.FileRecord, error)
 }
 
-type MinioStorage struct {
-	client    *minio.Client
-	bucket    string
-	publicURL string
-	repo      *repository.FileRepository
+type LocalStorage struct {
+	root string
+	repo *repository.FileRepository
 }
 
-func NewMinioStorage(cfg *config.Config, repo *repository.FileRepository) FileStorage {
-	if cfg.MinioEndpoint == "" {
-		log.Println("MinIO 未配置，文件存储不可用")
+func NewLocalStorage(cfg *config.Config, repo *repository.FileRepository) FileStorage {
+	root := cfg.StorageDir
+	if root == "" {
+		root = "./data/files"
+	}
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		log.Printf("警告: 创建本地存储目录失败: %v", err)
 		return nil
 	}
-
-	client, err := minio.New(cfg.MinioEndpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(cfg.MinioAccessKey, cfg.MinioSecretKey, ""),
-		Secure: cfg.MinioUseSSL,
-	})
+	abs, err := filepath.Abs(root)
 	if err != nil {
-		log.Printf("警告: MinIO 客户端初始化失败: %v", err)
-		return nil
+		abs = root
 	}
-
-	ctx := context.Background()
-	bucket := cfg.MinioBucket
-	if bucket == "" {
-		bucket = "rain-yi"
-	}
-
-	exists, err := client.BucketExists(ctx, bucket)
-	if err != nil {
-		log.Printf("警告: MinIO 检查存储桶失败: %v", err)
-		return nil
-	}
-	if !exists {
-		err = client.MakeBucket(ctx, bucket, minio.MakeBucketOptions{})
-		if err != nil {
-			log.Printf("警告: MinIO 创建存储桶失败: %v", err)
-			return nil
-		}
-		log.Printf("MinIO 存储桶 '%s' 已创建", bucket)
-	}
-
-	log.Printf("MinIO 已连接: %s/%s", cfg.MinioEndpoint, bucket)
-	return &MinioStorage{
-		client:    client,
-		bucket:    bucket,
-		publicURL: strings.TrimRight(cfg.MinioPublicURL, "/"),
-		repo:      repo,
-	}
+	log.Printf("本地文件存储已就绪: %s", abs)
+	return &LocalStorage{root: abs, repo: repo}
 }
 
-func (s *MinioStorage) Save(fileType string, userID int64, referenceType string, referenceID int64, originalName string, data io.Reader, size int64) (*model.FileRecord, error) {
-	ext := filepath.Ext(originalName)
-	objectName := fmt.Sprintf("%s/%d/%s%s", fileType, userID, uuid.New().String(), ext)
-
-	contentType := detectContentType(ext)
-
-	ctx := context.Background()
-	_, err := s.client.PutObject(ctx, s.bucket, objectName, data, size, minio.PutObjectOptions{
-		ContentType: contentType,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("MinIO 上传失败: %w", err)
+func (s *LocalStorage) resolve(path string) (string, error) {
+	clean := filepath.Clean("/" + path)
+	full := filepath.Join(s.root, filepath.FromSlash(strings.TrimPrefix(clean, "/")))
+	if !strings.HasPrefix(full, s.root) {
+		return "", fmt.Errorf("非法路径: %s", path)
 	}
-
-	url := s.GetProxiedURL(objectName)
-
-	record := &model.FileRecord{
-		UserID:        userID,
-		FileType:      fileType,
-		ReferenceID:   referenceID,
-		ReferenceType: referenceType,
-		OriginalName:  originalName,
-		StoragePath:   objectName,
-		URL:           url,
-		Size:          size,
-		MimeType:      contentType,
-	}
-
-	if err := s.repo.Create(record); err != nil {
-		return nil, fmt.Errorf("FileRecord 入库失败: %w", err)
-	}
-
-	return record, nil
+	return full, nil
 }
 
-func (s *MinioStorage) Delete(record *model.FileRecord) error {
-	ctx := context.Background()
-	err := s.client.RemoveObject(ctx, s.bucket, record.StoragePath, minio.RemoveObjectOptions{})
+func (s *LocalStorage) writeObject(objectName string, data io.Reader) error {
+	full, err := s.resolve(objectName)
 	if err != nil {
-		return fmt.Errorf("MinIO 删除失败: %w", err)
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		return fmt.Errorf("创建目录失败: %w", err)
+	}
+	f, err := os.Create(full)
+	if err != nil {
+		return fmt.Errorf("写入文件失败: %w", err)
+	}
+	defer f.Close()
+	if _, err := io.Copy(f, data); err != nil {
+		return fmt.Errorf("写入内容失败: %w", err)
 	}
 	return nil
 }
 
-func (s *MinioStorage) GetURL(path string) string {
-	return fmt.Sprintf("%s/%s/%s", s.publicURL, s.bucket, path)
+func (s *LocalStorage) Save(fileType string, userID int64, referenceType string, referenceID int64, originalName string, data io.Reader, size int64) (*model.FileRecord, error) {
+	ext := filepath.Ext(originalName)
+	objectName := fmt.Sprintf("%s/%d/%s%s", fileType, userID, uuid.New().String(), ext)
+	return s.SaveToPath(objectName, userID, fileType, referenceType, referenceID, originalName, data, size)
 }
 
-func (s *MinioStorage) SaveToPath(objectName string, userID int64, fileType string, referenceType string, referenceID int64, originalName string, data io.Reader, size int64) (*model.FileRecord, error) {
-	contentType := detectContentType(filepath.Ext(originalName))
-
-	ctx := context.Background()
-	_, err := s.client.PutObject(ctx, s.bucket, objectName, data, size, minio.PutObjectOptions{
-		ContentType: contentType,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("MinIO 上传失败: %w", err)
+func (s *LocalStorage) SaveToPath(objectName string, userID int64, fileType string, referenceType string, referenceID int64, originalName string, data io.Reader, size int64) (*model.FileRecord, error) {
+	if err := s.writeObject(objectName, data); err != nil {
+		return nil, err
 	}
 
-	url := fmt.Sprintf("/storage/%s/%s", s.bucket, objectName)
+	contentType := detectContentType(filepath.Ext(originalName))
+	if contentType == "application/octet-stream" {
+		contentType = detectContentType(filepath.Ext(objectName))
+	}
 
 	record := &model.FileRecord{
 		UserID:        userID,
@@ -146,7 +98,7 @@ func (s *MinioStorage) SaveToPath(objectName string, userID int64, fileType stri
 		ReferenceType: referenceType,
 		OriginalName:  originalName,
 		StoragePath:   objectName,
-		URL:           url,
+		URL:           s.GetURL(objectName),
 		Size:          size,
 		MimeType:      contentType,
 	}
@@ -154,47 +106,42 @@ func (s *MinioStorage) SaveToPath(objectName string, userID int64, fileType stri
 	if err := s.repo.Create(record); err != nil {
 		return nil, fmt.Errorf("FileRecord 入库失败: %w", err)
 	}
-
 	return record, nil
 }
 
-func (s *MinioStorage) GetProxiedURL(path string) string {
-	return fmt.Sprintf("/storage/%s/%s", s.bucket, path)
+func (s *LocalStorage) Delete(record *model.FileRecord) error {
+	full, err := s.resolve(record.StoragePath)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(full); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("删除文件失败: %w", err)
+	}
+	return nil
 }
 
-func (s *MinioStorage) Bucket() string {
-	return s.bucket
+func (s *LocalStorage) GetURL(path string) string {
+	return "/storage/" + strings.TrimPrefix(path, "/")
 }
 
-func (s *MinioStorage) Get(path string) (io.ReadCloser, error) {
-	ctx := context.Background()
-	obj, err := s.client.GetObject(ctx, s.bucket, path, minio.GetObjectOptions{})
+func (s *LocalStorage) Get(path string) (io.ReadCloser, error) {
+	full, err := s.resolve(path)
 	if err != nil {
 		return nil, err
 	}
-	objInfo, err := obj.Stat()
+	return os.Open(full)
+}
+
+type localFileObject struct {
+	*os.File
+}
+
+func (l *localFileObject) Size() int64 {
+	info, err := l.Stat()
 	if err != nil {
-		obj.Close()
-		return nil, err
+		return -1
 	}
-	return &minioObject{obj, objInfo.Size}, nil
-}
-
-type minioObject struct {
-	obj  *minio.Object
-	size int64
-}
-
-func (m *minioObject) Read(p []byte) (int, error) {
-	return m.obj.Read(p)
-}
-
-func (m *minioObject) Close() error {
-	return m.obj.Close()
-}
-
-func (m *minioObject) Size() int64 {
-	return m.size
+	return info.Size()
 }
 
 func detectContentType(ext string) string {

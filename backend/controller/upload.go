@@ -192,7 +192,7 @@ func (ctl *UploadController) UploadAvatar(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "上传成功",
-		"file":    record,
+		"file":    absFileRecord(c.Request, record),
 	})
 }
 
@@ -259,7 +259,7 @@ func (ctl *UploadController) UploadAIAvatar(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "上传成功",
-		"file":    record,
+		"file":    absFileRecord(c.Request, record),
 	})
 }
 
@@ -308,6 +308,6 @@ func (ctl *UploadController) handleSingleUpload(c *gin.Context, fileType string,
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "上传成功",
-		"file":    record,
+		"file":    absFileRecord(c.Request, record),
 	})
 }

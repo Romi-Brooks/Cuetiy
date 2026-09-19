@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -76,12 +77,7 @@ func (ctl *AuthController) Register(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "注册成功",
 		"token":   token,
-		"user": gin.H{
-			"id":       user.ID,
-			"username": user.Username,
-			"email":    user.Email,
-			"avatar":   user.Avatar,
-		},
+		"user":    absUserJSON(c.Request, user),
 	})
 }
 
@@ -112,12 +108,7 @@ func (ctl *AuthController) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "登录成功",
 		"token":   token,
-		"user": gin.H{
-			"id":       user.ID,
-			"username": user.Username,
-			"email":    user.Email,
-			"avatar":   user.Avatar,
-		},
+		"user":    absUserJSON(c.Request, user),
 	})
 }
 
@@ -159,6 +150,8 @@ func (ctl *AuthController) generateToken(user *model.User) (string, error) {
 		UserID: user.ID,
 		Email:  user.Email,
 		RegisteredClaims: jwt.RegisteredClaims{
+			// jti 用于登出后的 Redis 黑名单
+			ID:        uuid.New().String(),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(72 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},

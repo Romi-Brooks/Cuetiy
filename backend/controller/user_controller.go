@@ -27,12 +27,7 @@ func (ctl *UserController) GetProfile(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"user": gin.H{
-			"id":       user.ID,
-			"username": user.Username,
-			"email":    user.Email,
-			"avatar":   user.Avatar,
-		},
+		"user": absUserJSON(c.Request, user),
 	})
 }
 
@@ -69,11 +64,6 @@ func (ctl *UserController) UpdateProfile(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "更新成功",
-		"user": gin.H{
-			"id":       user.ID,
-			"username": user.Username,
-			"email":    user.Email,
-			"avatar":   user.Avatar,
-		},
+		"user":    absUserJSON(c.Request, user),
 	})
 }

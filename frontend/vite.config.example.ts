@@ -1,13 +1,14 @@
 import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
+import react from '@vitejs/plugin-react'
 
 // 修改为你的后端地址
 const baseUrl = 'http://localhost:8080'
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [react()],
   server: {
     port: 5173,
+    host: true,
     proxy: {
       '/api': {
         target: baseUrl,
@@ -21,6 +22,24 @@ export default defineConfig({
       '/storage': {
         target: baseUrl,
         changeOrigin: true,
+      },
+    },
+  },
+  build: {
+    outDir: 'dist',
+    assetsDir: 'assets',
+    rollupOptions: {
+      output: {
+        entryFileNames: 'js/[name]-[hash].js',
+        chunkFileNames: 'js/[name]-[hash].js',
+        assetFileNames: (assetInfo) => {
+          const name = assetInfo.name || ''
+          if (name.endsWith('.css')) return 'css/[name]-[hash][extname]'
+          if (/\.(png|jpe?g|gif|svg|webp|avif|ico)$/i.test(name)) return 'img/[name]-[hash][extname]'
+          if (/\.(woff2?|eot|ttf|otf)$/i.test(name)) return 'fonts/[name]-[hash][extname]'
+          if (/\.(mp3|wav|ogg|mp4|webm)$/i.test(name)) return 'media/[name]-[hash][extname]'
+          return 'assets/[name]-[hash][extname]'
+        },
       },
     },
   },

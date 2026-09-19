@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -23,8 +24,14 @@ type ChatController struct {
 	convRepo       *repository.ConversationRepository
 	aiService      *service.AIService
 	contextManager *service.ContextManager
+	assembler      *service.ContextAssembler
+	msgWriter      *service.MessageWriter
+	tts            *service.TTSService
 	hub            *service.WebSocketHub
 	upgrader       websocket.Upgrader
+
+	// 语音条冷却：convID -> 距上次语音条的文字条数
+	voiceCooldown map[int64]int
 }
 
 func NewChatController(
@@ -32,6 +39,9 @@ func NewChatController(
 	convRepo *repository.ConversationRepository,
 	aiService *service.AIService,
 	contextManager *service.ContextManager,
+	assembler *service.ContextAssembler,
+	msgWriter *service.MessageWriter,
+	tts *service.TTSService,
 	hub *service.WebSocketHub,
 ) *ChatController {
 	return &ChatController{
@@ -39,7 +49,11 @@ func NewChatController(
 		convRepo:       convRepo,
 		aiService:      aiService,
 		contextManager: contextManager,
+		assembler:      assembler,
+		msgWriter:      msgWriter,
+		tts:            tts,
 		hub:            hub,
+		voiceCooldown:  make(map[int64]int),
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  4096,
 			WriteBufferSize: 4096,
@@ -53,6 +67,8 @@ func NewChatController(
 type wsIncomingMessage struct {
 	ConversationID int64  `json:"conversation_id"`
 	Content        string `json:"content"`
+	// WantVoice 用户点名「想听语音」：本轮 AI 回复强制走语音条
+	WantVoice bool `json:"want_voice"`
 }
 
 func (ctl *ChatController) HandleWebSocket(c *gin.Context) {
@@ -69,11 +85,22 @@ func (ctl *ChatController) HandleWebSocket(c *gin.Context) {
 
 	claims := &middleware.Claims{}
 	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
 		return []byte(config.AppConfig.JWTSecret), nil
 	})
 	if err != nil || !token.Valid {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "令牌无效"})
 		return
+	}
+
+	if config.RDB != nil && claims.ID != "" {
+		blacklisted, blErr := config.RDB.Exists(config.RedisCtx, fmt.Sprintf("auth:blacklist:%s", claims.ID)).Result()
+		if blErr == nil && blacklisted == 1 {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "令牌已被吊销"})
+			return
+		}
 	}
 
 	conn, err := ctl.upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -87,6 +114,19 @@ func (ctl *ChatController) HandleWebSocket(c *gin.Context) {
 		UserID: claims.UserID,
 		Conn:   conn,
 		Send:   make(chan []byte, 256),
+		PublicBase: func() string {
+			scheme := "http"
+			if c.Request.TLS != nil {
+				scheme = "https"
+			}
+			if p := c.Request.Header.Get("X-Forwarded-Proto"); p != "" {
+				scheme = strings.ToLower(strings.TrimSpace(p))
+			}
+			if c.Request.Host != "" {
+				return scheme + "://" + c.Request.Host
+			}
+			return ""
+		}(),
 	}
 
 	ctl.hub.Register(client)
@@ -101,7 +141,7 @@ func (ctl *ChatController) readPump(client *service.Client) {
 		client.Conn.Close()
 	}()
 
-	client.Conn.SetReadLimit(4096)
+	client.Conn.SetReadLimit(64 * 1024)
 	client.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	client.Conn.SetPongHandler(func(string) error {
 		client.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
@@ -139,32 +179,43 @@ func (ctl *ChatController) readPump(client *service.Client) {
 			}
 		}
 
+		// 分层组装：L0/L1/L2 + 记忆 + 摘要 + 近期原文（token 预算 / 55% 压缩）
+		assembled, aerr := ctl.assembler.Assemble(conv, content)
+		if aerr != nil {
+			log.Printf("AssembleContext error: %v", aerr)
+			ctl.hub.SendError(userID, "上下文构建失败")
+			continue
+		}
+		log.Printf("[ctx] conv=%d emotion=%s skills=%v tokens=%d sys=%d recent=%d compacted=%v ver=%d",
+			conv.ID, assembled.Emotion, assembled.ActivatedSkills,
+			assembled.EstimatedTokens, assembled.SystemTokens, assembled.RecentTokens,
+			assembled.Compacted, assembled.SummaryVersion)
+
+		if assembled.Debug != nil {
+			ctl.hub.SendContextDebug(userID, conv.ID, assembled.Debug)
+		}
+		ctxDebug := interface{}(nil)
+		if assembled.Debug != nil {
+			ctxDebug = assembled.Debug
+		}
+
+		// 本地先展示/组装；MySQL 落库放到本轮结束后异步执行
 		userMessage := &model.Message{
 			ConversationID: conv.ID,
 			Role:           "user",
 			Content:        content,
-		}
-		if err := ctl.msgRepo.Create(userMessage); err != nil {
-			log.Printf("Save user message error: %v", err)
-			ctl.hub.SendError(userID, "消息保存失败")
-			continue
-		}
-
-		history, err := ctl.contextManager.BuildContext(conv.ID)
-		if err != nil {
-			log.Printf("BuildContext error: %v", err)
-			ctl.hub.SendError(userID, "上下文构建失败")
-			continue
+			CreatedAt:      time.Now(),
 		}
 
 		ctl.hub.BroadcastStarting(userID)
 
-		aiResponse, err := ctl.aiService.SendMessage(conv, content, history, func(chunk string) {
+		aiResponse, err := ctl.aiService.SendMessageWithMessages(assembled.Messages, func(chunk string) {
 			ctl.hub.SendStreamChunk(userID, chunk)
 		})
 		if err != nil {
 			log.Printf("AI SendMessage error: %v", err)
 			ctl.hub.SendError(userID, "AI 响应失败: "+err.Error())
+			ctl.msgWriter.EnqueueAsync(userMessage)
 			continue
 		}
 
@@ -172,13 +223,88 @@ func (ctl *ChatController) readPump(client *service.Client) {
 			ConversationID: conv.ID,
 			Role:           "assistant",
 			Content:        aiResponse,
-		}
-		if err := ctl.msgRepo.Create(aiMessage); err != nil {
-			log.Printf("Save AI message error: %v", err)
+			MessageType:    "text",
+			CreatedAt:      time.Now(),
 		}
 
-		ctl.hub.SendComplete(userID, aiResponse)
+		// 语音条策略：仅用户点名 want_voice 时合成
+		if ctl.tts != nil && ctl.shouldSendVoice(conv.ID, msg.WantVoice) {
+			url, _, ttsDbg, terr := ctl.tts.Synthesize(userID, aiResponse, "", assembled.Emotion)
+			if ttsDbg != nil {
+				ctl.hub.SendTTSDebug(userID, conv.ID, ttsDbg)
+			}
+			if terr == nil && url != "" {
+				absAudio := url
+				if client.PublicBase != "" && strings.HasPrefix(url, "/") {
+					absAudio = strings.TrimRight(client.PublicBase, "/") + url
+				}
+				aiMessage.MessageType = "voice"
+				aiMessage.AudioURL = absAudio
+				if ttsDbg != nil && ttsDbg.DurationMs > 0 {
+					aiMessage.AudioDurationMs = ttsDbg.DurationMs
+				} else {
+					aiMessage.AudioDurationMs = estimateVoiceMs(aiResponse)
+				}
+				ctl.voiceCooldown[conv.ID] = 0
+				var ttsAny interface{}
+				if ttsDbg != nil {
+					ttsAny = ttsDbg
+				}
+				// complete 内嵌 tts+ctx，前端按 audio_url 落库，不再依赖临时 id
+				ctl.hub.SendCompleteVoice(userID, conv.ID, aiResponse, absAudio, aiMessage.AudioDurationMs, ttsAny, ctxDebug)
+			} else {
+				if terr != nil {
+					log.Printf("[tts] voice bar failed: %v", terr)
+				}
+				ctl.noteTextTurn(conv.ID)
+				ctl.hub.SendCompleteWithDebug(userID, conv.ID, aiResponse, "text", "", 0, 0, nil, ctxDebug)
+			}
+		} else {
+			ctl.noteTextTurn(conv.ID)
+			ctl.hub.SendCompleteWithDebug(userID, conv.ID, aiResponse, "text", "", 0, 0, nil, ctxDebug)
+		}
+
+		ctl.msgWriter.EnqueueAsync(userMessage, aiMessage)
+		go func(convID int64, u, a *model.Message) {
+			ctl.contextManager.AppendToContext(convID, u)
+			ctl.contextManager.AppendToContext(convID, a)
+			if c, e := ctl.convRepo.FindByID(convID); e == nil {
+				_ = ctl.convRepo.Update(c)
+			}
+		}(conv.ID, userMessage, aiMessage)
 	}
+}
+
+func (ctl *ChatController) noteTextTurn(convID int64) {
+	ctl.voiceCooldown[convID]++
+}
+
+func (ctl *ChatController) shouldSendVoice(convID int64, want bool) bool {
+	// 仅用户点名要语音时才发语音条；AI 自选策略后续再开
+	if !want {
+		return false
+	}
+	cfg := config.AppConfig
+	if cfg == nil || !cfg.TTSEnabled || cfg.MIMOAPIKey == "" {
+		return false
+	}
+	return true
+}
+
+// estimateVoiceMs 粗估时长：中文约 4.5 字/秒
+func estimateVoiceMs(text string) int64 {
+	n := len([]rune(service.StripForTTS(text)))
+	if n == 0 {
+		return 1000
+	}
+	ms := int64(float64(n) / 4.5 * 1000)
+	if ms < 800 {
+		ms = 800
+	}
+	if ms > 60000 {
+		ms = 60000
+	}
+	return ms
 }
 
 func (ctl *ChatController) writePump(client *service.Client) {

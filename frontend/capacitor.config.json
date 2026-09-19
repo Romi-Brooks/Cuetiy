@@ -1,0 +1,16 @@
+{
+  "appId": "com.rainyi.app",
+  "appName": "RainYi",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": true,
+    "buildOptions": {
+      "keystorePath": null,
+      "keystoreAlias": null
+    }
+  },
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  }
+}

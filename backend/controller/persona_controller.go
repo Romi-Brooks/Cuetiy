@@ -65,7 +65,7 @@ func (ctl *PersonaController) GetPersonas(c *gin.Context) {
 	for _, p := range personas {
 		fileCount, _ := ctl.pfRepo.CountByPersonaID(p.ID)
 		result = append(result, personaWithCount{
-			Persona:   p,
+			Persona:   absPersona(c.Request, &p),
 			FileCount: fileCount,
 			IsBuiltIn: p.UserID == 0,
 		})
@@ -75,6 +75,7 @@ func (ctl *PersonaController) GetPersonas(c *gin.Context) {
 }
 
 func (ctl *PersonaController) GetPersona(c *gin.Context) {
+	userID := c.GetInt64("user_id")
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -88,10 +89,16 @@ func (ctl *PersonaController) GetPersona(c *gin.Context) {
 		return
 	}
 
+	// 仅允许查看内置人格或自己的人格
+	if persona.UserID != 0 && persona.UserID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "无权访问该人格"})
+		return
+	}
+
 	files, _ := ctl.pfRepo.FindByPersonaID(id)
 
 	c.JSON(http.StatusOK, gin.H{
-		"persona":       persona,
+		"persona":       absPersona(c.Request, persona),
 		"persona_files": files,
 	})
 }
@@ -145,7 +152,7 @@ func (ctl *PersonaController) CreatePersona(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "创建成功",
-		"persona": persona,
+		"persona": absPersona(c.Request, persona),
 	})
 }
 
@@ -204,7 +211,7 @@ func (ctl *PersonaController) UpdatePersona(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "更新成功",
-		"persona": persona,
+		"persona": absPersona(c.Request, persona),
 	})
 }
 
@@ -288,7 +295,7 @@ func (ctl *PersonaController) UploadSkillFile(c *gin.Context) {
 		}
 
 		if ctl.personaStg == nil {
-			errors = append(errors, "MinIO 未配置，无法上传")
+			errors = append(errors, "文件存储未配置，无法上传")
 			continue
 		}
 
@@ -363,7 +370,7 @@ func (ctl *PersonaController) DeleteSkillFile(c *gin.Context) {
 	}
 
 	if ctl.personaStg == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "MinIO 未配置"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "文件存储未配置"})
 		return
 	}
 
@@ -406,7 +413,7 @@ func (ctl *PersonaController) UploadPersonaAvatar(c *gin.Context) {
 	}
 
 	if ctl.personaStg == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "MinIO 未配置"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "文件存储未配置"})
 		return
 	}
 
@@ -443,7 +450,7 @@ func (ctl *PersonaController) UploadPersonaAvatar(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "上传成功",
-		"avatar":  url,
+		"avatar":  utils.AssetURL(c.Request, url),
 	})
 }
 
@@ -476,8 +483,13 @@ func (ctl *PersonaController) SetConversationPersona(c *gin.Context) {
 	}
 
 	if req.PersonaID != nil {
-		if _, err := ctl.personaRepo.FindByID(*req.PersonaID); err != nil {
+		persona, pErr := ctl.personaRepo.FindByID(*req.PersonaID)
+		if pErr != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "人格不存在"})
+			return
+		}
+		if persona.UserID != 0 && persona.UserID != userID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "无权使用该人格"})
 			return
 		}
 	}
@@ -491,7 +503,66 @@ func (ctl *PersonaController) SetConversationPersona(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":      "设置成功",
-		"conversation": conv,
+		"conversation": absConversation(c.Request, conv),
+	})
+}
+
+// OpenConversation 打开（或创建）该人格对应的专属会话：一人格一会话
+func (ctl *PersonaController) OpenConversation(c *gin.Context) {
+	userID := c.GetInt64("user_id")
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "人格ID无效"})
+		return
+	}
+
+	persona, err := ctl.personaRepo.FindByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "人格不存在"})
+		return
+	}
+	if persona.UserID != 0 && persona.UserID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "无权访问该人格"})
+		return
+	}
+
+	nickname := persona.Nickname
+	if nickname == "" {
+		nickname = persona.Name
+	}
+	title := nickname
+	if title == "" {
+		title = "对话"
+	}
+
+	conv, created, err := ctl.convRepo.FindOrCreateByPersona(userID, id, title, nickname, persona.Avatar)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "打开会话失败"})
+		return
+	}
+
+	// 已有会话时同步最新头像/昵称（人格改名后会话侧跟着变）
+	if !created {
+		changed := false
+		if persona.Avatar != "" && conv.AIAvatar != persona.Avatar {
+			conv.AIAvatar = persona.Avatar
+			changed = true
+		}
+		if nickname != "" && conv.AINickname != nickname {
+			conv.AINickname = nickname
+			changed = true
+		}
+		if changed {
+			_ = ctl.convRepo.Update(conv)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":      "ok",
+		"conversation": absConversation(c.Request, conv),
+		"created":      created,
+		"persona":      absPersona(c.Request, persona),
 	})
 }
 
@@ -526,7 +597,7 @@ func (ctl *PersonaController) GetConversationPersona(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"persona": persona})
+	c.JSON(http.StatusOK, gin.H{"persona": absPersona(c.Request, persona)})
 }
 
 func (ctl *PersonaController) DebugPrompt(c *gin.Context) {
@@ -559,7 +630,7 @@ func (ctl *PersonaController) LoadFromDirectory(c *gin.Context) {
 
 	skillsDir := config.AppConfig.SkillsDir
 	if skillsDir == "" {
-		skillsDir = "../skills"
+		skillsDir = "./skills"
 	}
 
 	entries, err := os.ReadDir(skillsDir)
@@ -629,7 +700,7 @@ func loadSkillsDir(persona *model.Persona, personaStg *service.PersonaStorage) e
 
 	skillsDir := config.AppConfig.SkillsDir
 	if skillsDir == "" {
-		skillsDir = "../skills"
+		skillsDir = "./skills"
 	}
 
 	dirPath := filepath.Join(skillsDir, persona.DirName)

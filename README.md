@@ -2,317 +2,94 @@
 
 > **English** | [中文](docs/README-cn.md)
 
-A gentle, comforting AI companion chatbot powered by LLM + Agent Skill system. Supports continuous conversation, history memory, personalized settings, and cloud-native storage.
+AI companion chat. Supports Web / EXE / APK. Data can live on a server or on-device; chat supports JSON export/import.
+
+## Product matrix
+
+| Package | Backend | Data | How users connect |
+|---------|---------|------|-------------------|
+| Web / thin clients | Server Go | PostgreSQL or SQLite | Set **API URL** in the app |
+| **EXE unified** | Embedded Go sidecar | Local SQLite + `data/` | Default `http://127.0.0.1:8080` |
+| **EXE portable zip** | Same as unified | Folder `data/` | Unzip and run |
+| **APK thin** | Remote server | Server DB | Set API URL in the app |
+
+**AI keys**: after login, open **Me → Data & Server**. Keys are never echoed; the UI only shows configured / not configured. Saved to backend `.env` and applied immediately.
 
 ## Features
 
-| Feature | Description |
-|---------|-------------|
-| WeChat-like UI | Sidebar conversation list + chat window, green/gray message bubbles |
-| Continuous Chat | WebSocket streaming responses with AI "typing" indicator |
-| Context Memory | Backend maintains context queue (max 20 messages), persisted to MySQL + Redis |
-| Multi-user Isolation | JWT authentication (with Redis blacklist support), complete user data isolation |
-| Agent Skill System | Auto-parses `/skills/*.md` files, structured as SkillNode → SkillKV tree |
-| Hot-reload Skills | Refresh skills via API without restarting the server |
-| Custom AI Avatar/Nickname | Upload avatar or set nickname per conversation, stored in MinIO |
-| File Upload & Management | Unified file upload endpoint, records tracked via FileRecord table |
-| Avatar Proxy | Go backend proxies MinIO images to frontend, eliminating CORS issues |
-| Clear Chat History | Delete all messages in a conversation, reset context |
-| Dark Mode | Full UI dark/light theme toggle via Tailwind CSS |
-| Emoji Picker | Emoji selection popup in the chat input area |
-| Local Message Cache | IndexedDB-based message storage for instant rendering |
+- Social-app style UI, WebSocket streaming, humanized typing rhythm
+- Context: L0 persona + L1 skill index + rolling summary + L2 triggered skills + **compacted HISTORY**
+- Persona/skill files, TTS voice bars, ASR, archive before clear
+- JWT multi-user isolation
+- Chat export/import
+- Full package vs frontend-only package for easier deployment
 
-## Tech Stack
+## Tech stack
 
-### Frontend
-- **Vue 3** + **Vite 5** + **TypeScript**
-- **Pinia** state management
-- **Tailwind CSS 3**
-- **WebSocket** real-time communication
-- **IndexedDB** local message caching
-- Responsive design (mobile + desktop)
+| Layer | Stack |
+|-------|--------|
+| Frontend | React 18, Vite 5, TS, Zustand, Tailwind, Capacitor 7, Tauri 2 |
+| Backend | Go 1.26, Gin, GORM, JWT, WebSocket |
+| DB | PostgreSQL / MySQL / SQLite |
+| Cache | Redis optional |
+| AI | DeepSeek; MiMo TTS/ASR |
 
-### Backend
-- **Go 1.21+**
-- **Gin** Web framework
-- **GORM** + **MySQL**
-- **Redis** (context cache, system prompt cache, token blacklist)
-- **MinIO** (file storage: avatars, attachments, skill files)
-- **WebSocket** (gorilla/websocket)
-- **JWT** authentication
-- **DeepSeek API V4**
+## Development
 
-### AI & Skills
-- DeepSeek API streaming responses
-- SKILL.md parsing with hot-reload (standard Markdown Frontmatter format)
-- Structured SkillNode + SkillKV model (tree-based skill rules)
-- In-memory PromptCache with Redis fallback
-- Conversation context management (auto-truncation to prevent overflow)
+```bash
+# Backend
+cd backend
+cp .env.example .env   # DB_DRIVER=sqlite or postgres
+go run cmd/main.go
 
-## Project Structure
-
-```
-rain-yi/
-├── frontend/                  # Vue3 frontend
-│   ├── public/
-│   │   └── vite.svg
-│   ├── src/
-│   │   ├── api/              # API request layer
-│   │   │   └── index.ts
-│   │   ├── assets/           # Styles
-│   │   │   └── main.css
-│   │   ├── components/       # Shared components
-│   │   │   ├── ChatBubble.vue
-│   │   │   ├── EmojiPicker.vue
-│   │   │   ├── LoadingState.vue
-│   │   │   ├── TimeStamp.vue
-│   │   │   └── VoiceButton.vue
-│   │   ├── types/            # TypeScript definitions
-│   │   │   └── api.ts
-│   │   ├── views/            # Pages
-│   │   │   ├── Login.vue
-│   │   │   ├── MainChat.vue
-│   │   │   └── Settings.vue
-│   │   ├── store/            # Pinia stores
-│   │   │   ├── user.ts
-│   │   │   ├── chat.ts
-│   │   │   └── theme.ts
-│   │   ├── router/           # Routes
-│   │   │   └── index.ts
-│   │   ├── utils/            # Utilities
-│   │   │   ├── index.ts
-│   │   │   └── storage.ts    # IndexedDB cache layer
-│   │   ├── App.vue
-│   │   ├── main.ts
-│   │   └── env.d.ts
-│   ├── .env.development          # Local dev (not tracked by git)
-│   ├── .env.development.example
-│   ├── .env.production           # Production build (not tracked by git)
-│   ├── .env.production.example
-│   ├── .env.production.local     # Real server URL for APK build (gitignored)
-│   ├── index.html
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── vite.config.ts
-│   ├── tailwind.config.js
-│   └── postcss.config.js
-│
-├── backend/                   # Go backend
-│   ├── cmd/
-│   │   └── main.go           # Entry point, wires all dependencies
-│   ├── config/
-│   │   ├── config.go         # Environment variables (DB, Redis, MinIO, etc.)
-│   │   ├── database.go       # MySQL connection
-│   │   └── redis.go          # Redis client initialization
-│   ├── controller/
-│   │   ├── auth_controller.go
-│   │   ├── chat_controller.go (WebSocket)
-│   │   ├── conversation_controller.go
-│   │   ├── persona_controller.go
-│   │   ├── upload.go         # File upload endpoint (MinIO-backed)
-│   │   └── user_controller.go
-│   ├── service/
-│   │   ├── ai_service.go     # DeepSeek API calls
-│   │   ├── context.go        # Context management (Redis-backed)
-│   │   ├── storage.go        # FileStorage interface + MinIO implementation
-│   │   └── websocket.go      # WebSocket Hub
-│   ├── model/
-│   │   └── models.go         # All data models (User, Conversation, Message, Persona, SkillNode, SkillKV, FileRecord)
-│   ├── repository/
-│   │   ├── user_repo.go
-│   │   ├── conversation_repo.go
-│   │   ├── message_repo.go
-│   │   ├── persona_repo.go   # Persona + SkillNode + SkillKV CRUD
-│   │   └── file_repo.go      # FileRecord CRUD
-│   ├── skill/
-│   │   ├── loader.go         # MD parsing, SkillManager, SystemPrompt assembly
-│   │   └── prompt_cache.go   # In-memory prompt cache with Redis fallback
-│   ├── middleware/
-│   │   └── auth.go           # JWT middleware with Redis blacklist check
-│   ├── utils/
-│   │   └── sanitize.go
-│   ├── static/
-│   │   └── default-avatar.svg
-│   ├── .env
-│   └── go.mod
-│
-├── skills/                    # Skill files directory
-│   ├── SKILL-DEFAULT.md       # Default emotional companion skill
-│   └── rain/
-│       └── Emotion-Companion.md
-│
-├── docs/
-│   ├── README-cn.md          # Chinese README
-│   └── PROJECT-cn.md         # Chinese project documentation
-│
-├── TASKS.md                   # Development task list & roadmap
-└── README.md
+# Frontend
+cd frontend
+pnpm install
+pnpm dev
+# Login page → server settings → http://127.0.0.1:8080
 ```
 
-## Environment Variables
-
-### Backend `.env`
+SQLite example:
 
 ```env
-# Database
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=your_password_here
-DB_NAME=rain_yi
-
-# Server
+DB_DRIVER=sqlite
+SQLITE_PATH=./data/rainyi.db
 SERVER_PORT=8080
-SERVER_HOST=0.0.0.0
-
-# JWT
-JWT_SECRET=rain-yi-secret-key-change-in-production
-
-# DeepSeek API (required)
-DEEPSEEK_API_KEY=your_deepseek_api_key_here
-DEEPSEEK_API_URL=https://api.deepseek.com
-
-# Frontend URL (CORS)
-FRONTEND_URL=http://localhost:5173
-
-# Skills directory (relative to backend/ or absolute)
-SKILLS_DIR=../skills
-
-# Redis (optional)
-REDIS_HOST=127.0.0.1
-REDIS_PORT=6379
-REDIS_PASSWORD=
-REDIS_DB=0
-
-# MinIO (optional)
-MINIO_ENDPOINT=127.0.0.1:9000
-MINIO_ACCESS_KEY=admin
-MINIO_SECRET_KEY=your_secret_key
-MINIO_BUCKET=rain-yi
-MINIO_USE_SSL=false
+REDIS_HOST=
 ```
 
-## Getting Started
+## Packaging
 
-### Prerequisites
-- Go 1.21+
-- Node.js 18+
-- MySQL 8.0+
-- pnpm (or npm)
-- Redis (optional, fallback to MySQL without it)
-- MinIO (optional, fallback to DB-only without it)
+Official releases are built via CI. To build yourself, see:
 
-### 1. Database Setup
+| Doc | Topic |
+|-----|--------|
+| [docs/EXE-BUILD.md](docs/EXE-BUILD.md) | EXE thin |
+| [docs/EXE-UNIFIED.md](docs/EXE-UNIFIED.md) | EXE unified + portable |
+| [docs/APK-THIN.md](docs/APK-THIN.md) | APK thin |
+| [docs/LINUX-PACKAGING.md](docs/LINUX-PACKAGING.md) | Linux thin / unified |
+| [docs/PG-MIGRATION.md](docs/PG-MIGRATION.md) | PostgreSQL setup / MySQL migration |
+
+Scripts (run from repo root after env is ready):
 
 ```bash
-# Login to MySQL and create database
-mysql -u root -p
-CREATE DATABASE rain_yi CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-exit
+# Windows
+scripts/build-exe-thin.ps1
+scripts/build-exe-unified.ps1
+scripts/build-portable-unified.ps1
+scripts/build-apk-thin.ps1
+scripts/clean-build.ps1
+
+# Linux
+scripts/build-linux-thin.sh
+scripts/build-linux-unified.sh
+scripts/build-linux-portable.sh
 ```
 
-### 2. Configure Backend
+Output: `dist-packages/` (do not commit binaries).
 
-```bash
-cd backend
+## Notes
 
-# Copy and edit configuration
-cp .env.example .env
-# Edit .env to set MySQL password, DeepSeek API Key, Redis, MinIO
-
-# Download dependencies
-go mod tidy
-
-# Start backend
-go run cmd/main.go
-```
-
-### 3. Configure Frontend
-
-```bash
-cd frontend
-
-# Install dependencies
-pnpm install
-
-# Start dev server
-pnpm dev
-```
-
-### 4. Access
-
-Open your browser at `http://localhost:5173`, register an account, and start chatting.
-
-### 5. Build Android APK (Capacitor)
-
-The frontend can be packaged as an Android APK using Capacitor.
-
-#### Prerequisites
-- Android Studio (with Android SDK)
-- JDK 21+ (Android Studio JBR bundled JDK recommended)
-
-#### Setup
-
-```bash
-cd frontend
-
-# Install dependencies (already done if you followed step 3)
-pnpm install
-
-# Configure your server address
-# Create frontend/.env.production.local with:
-#   VITE_API_URL=http://your-server.com:8080/api
-#   VITE_WS_URL=ws://your-server.com:8080/api/ws/chat
-#
-# Or use the example template:
-#   cp .env.production.example .env.production.local
-#   # then edit .env.production.local with your server address
-
-# (First time only) Add the Android platform
-npx cap add android
-
-# Build the APK (builds frontend, syncs with Capacitor, compiles APK)
-pnpm cap:build
-```
-
-The APK will be generated at:
-```
-frontend/android/app/build/outputs/apk/debug/app-debug.apk
-```
-
-> **Note:** `frontend/android/` is in `.gitignore` and will not be committed.
-
-#### Build Notes
-- The APK loads the frontend UI from **local assets** (packaged inside the APK)
-- API calls are made to the server address configured in `.env.production.local`
-- The server address is **compile-time injected** into the JavaScript bundle
-- To update the server address, edit `.env.production.local` and re-run `pnpm cap:build`
-- Never commit `.env.production.local` — it's already excluded by `.gitignore`
-
-### Built-in Skills
-
-| Skill File | Name | Description |
-|------------|------|-------------|
-| SKILL-DEFAULT.md | emotional-companion | Default emotional companion, gentle and comforting |
-
-## Project Documentation
-
-For detailed technical documentation including database design, API endpoints, skill system, and security measures, see:
-- [Project Documentation (English)](PROJECT.md)
-- [项目文档（中文）](docs/PROJECT-cn.md)
-
-## Roadmap
-
-| Feature | Plan |
-|---------|------|
-| Selectable message deletion | Support deleting individual messages |
-| Key event memory | Retain core user info after clearing history |
-| Full emoji system | Complete emoji picker with custom emojis |
-| Voice input/output | TTS and speech recognition integration |
-| Emotion summary | LLM-driven conversation mood analysis |
-| Distributed WebSocket | Redis Pub/Sub for multi-node support |
-| Docker deployment | One-click docker-compose deployment |
-
-## License
-
-MIT
+- GORM parameterized SQL; passwords bcrypt
+- `/storage/*` path cleaned under `STORAGE_DIR`
+- APK debug allows cleartext HTTP; use HTTPS in production

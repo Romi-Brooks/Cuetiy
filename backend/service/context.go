@@ -8,8 +8,6 @@ import (
 	"rain-yi-backend/config"
 	"rain-yi-backend/model"
 	"rain-yi-backend/repository"
-
-	"github.com/redis/go-redis/v9"
 )
 
 const MaxContextLength = 20
@@ -22,17 +20,9 @@ func NewContextManager(msgRepo *repository.MessageRepository) *ContextManager {
 	return &ContextManager{msgRepo: msgRepo}
 }
 
+// BuildContext 以数据库为权威来源构建最近上下文，并回写 Redis。
+// 避免 Redis 脏缓存导致 AI 丢失/重复历史消息。
 func (cm *ContextManager) BuildContext(convID int64) ([]model.Message, error) {
-	if config.RDB != nil {
-		messages, err := cm.getFromRedis(convID)
-		if err == nil && len(messages) > 0 {
-			if len(messages) > MaxContextLength {
-				messages = messages[len(messages)-MaxContextLength:]
-			}
-			return messages, nil
-		}
-	}
-
 	messages, err := cm.msgRepo.GetRecentMessages(convID, MaxContextLength)
 	if err != nil {
 		return nil, err
@@ -56,25 +46,6 @@ func (cm *ContextManager) AppendToContext(convID int64, msg *model.Message) {
 	config.RDB.RPush(config.RedisCtx, key, data)
 	config.RDB.LTrim(config.RedisCtx, key, -50, -1)
 	config.RDB.Expire(config.RedisCtx, key, 24*time.Hour)
-}
-
-func (cm *ContextManager) getFromRedis(convID int64) ([]model.Message, error) {
-	key := fmt.Sprintf("chat:context:%d", convID)
-	vals, err := config.RDB.LRange(config.RedisCtx, key, 0, -1).Result()
-	if err != nil || len(vals) == 0 {
-		return nil, redis.Nil
-	}
-
-	messages := make([]model.Message, 0, len(vals))
-	for _, v := range vals {
-		var msg model.Message
-		if err := json.Unmarshal([]byte(v), &msg); err == nil {
-			messages = append(messages, msg)
-		}
-	}
-
-	config.RDB.Expire(config.RedisCtx, key, 24*time.Hour)
-	return messages, nil
 }
 
 func (cm *ContextManager) saveToRedis(convID int64, messages []model.Message) {

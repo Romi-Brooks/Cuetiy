@@ -1,11 +1,9 @@
 package service
 
 import (
-	"bytes"
-	"context"
 	"fmt"
-	"io"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -14,44 +12,34 @@ import (
 	"rain-yi-backend/repository"
 
 	"github.com/google/uuid"
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 const PersonaPrefix = "ai-persona"
 
 type PersonaStorage struct {
-	client *minio.Client
-	bucket string
+	root   string
 	pfRepo *repository.PersonaFileRepository
 }
 
 func NewPersonaStorage(pfRepo *repository.PersonaFileRepository) *PersonaStorage {
-	if config.AppConfig.MinioEndpoint == "" {
-		log.Println("MinIO 未配置，人格文件存储不可用")
-		return nil
+	root := "./data/files"
+	if config.AppConfig != nil && config.AppConfig.StorageDir != "" {
+		root = config.AppConfig.StorageDir
 	}
-
-	client, err := minio.New(config.AppConfig.MinioEndpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(config.AppConfig.MinioAccessKey, config.AppConfig.MinioSecretKey, ""),
-		Secure: config.AppConfig.MinioUseSSL,
-	})
+	abs, err := filepath.Abs(root)
 	if err != nil {
-		log.Printf("警告: PersonaStorage MinIO 客户端初始化失败: %v", err)
+		abs = root
+	}
+	if err := os.MkdirAll(filepath.Join(abs, PersonaPrefix), 0o755); err != nil {
+		log.Printf("警告: 创建人格存储目录失败: %v", err)
 		return nil
 	}
+	log.Printf("PersonaStorage 已就绪: %s (前缀: %s)", abs, PersonaPrefix)
+	return &PersonaStorage{root: abs, pfRepo: pfRepo}
+}
 
-	bucket := config.AppConfig.MinioBucket
-	if bucket == "" {
-		bucket = "rain-yi"
-	}
-
-	log.Printf("PersonaStorage 已连接: %s/%s (前缀: %s)", config.AppConfig.MinioEndpoint, bucket, PersonaPrefix)
-	return &PersonaStorage{
-		client: client,
-		bucket: bucket,
-		pfRepo: pfRepo,
-	}
+func (ps *PersonaStorage) absPath(rel string) string {
+	return filepath.Join(ps.root, filepath.FromSlash(rel))
 }
 
 func (ps *PersonaStorage) personaDir(persona *model.Persona) string {
@@ -59,29 +47,32 @@ func (ps *PersonaStorage) personaDir(persona *model.Persona) string {
 	if dirName == "" {
 		dirName = SanitizeDirName(persona.Name)
 	}
-	return fmt.Sprintf("ai-persona/%s/%d", dirName, persona.ID)
+	return fmt.Sprintf("%s/%s/%d", PersonaPrefix, dirName, persona.ID)
 }
 
 func (ps *PersonaStorage) objectPath(persona *model.Persona, fileName string) string {
 	return fmt.Sprintf("%s/%s", ps.personaDir(persona), fileName)
 }
 
-func (ps *PersonaStorage) UploadMD(persona *model.Persona, fileName string, content []byte, priority int) (*model.PersonaFile, error) {
-	ctx := context.Background()
-	objectName := ps.objectPath(persona, fileName)
+func (ps *PersonaStorage) write(rel string, content []byte) error {
+	full := ps.absPath(rel)
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		return fmt.Errorf("创建目录失败: %w", err)
+	}
+	return os.WriteFile(full, content, 0o644)
+}
 
-	_, err := ps.client.PutObject(ctx, ps.bucket, objectName,
-		bytes.NewReader(content), int64(len(content)),
-		minio.PutObjectOptions{ContentType: "text/markdown; charset=utf-8"})
-	if err != nil {
-		return nil, fmt.Errorf("MinIO 上传 MD 文件失败: %w", err)
+func (ps *PersonaStorage) UploadMD(persona *model.Persona, fileName string, content []byte, priority int) (*model.PersonaFile, error) {
+	objectName := ps.objectPath(persona, fileName)
+	if err := ps.write(objectName, content); err != nil {
+		return nil, fmt.Errorf("写入 MD 文件失败: %w", err)
 	}
 
 	category := detectModuleCategory(fileName)
 	pf := &model.PersonaFile{
 		PersonaID:      persona.ID,
 		FileName:       fileName,
-		MinioPath:      objectName,
+		StoragePath:    objectName,
 		Priority:       priority,
 		ModuleCategory: category,
 		FileSize:       int64(len(content)),
@@ -89,28 +80,14 @@ func (ps *PersonaStorage) UploadMD(persona *model.Persona, fileName string, cont
 	if err := ps.pfRepo.Create(pf); err != nil {
 		return nil, fmt.Errorf("PersonaFile 入库失败: %w", err)
 	}
-
 	return pf, nil
 }
 
 func (ps *PersonaStorage) DownloadMD(pf *model.PersonaFile) ([]byte, error) {
-	ctx := context.Background()
-	obj, err := ps.client.GetObject(ctx, ps.bucket, pf.MinioPath, minio.GetObjectOptions{})
+	data, err := os.ReadFile(ps.absPath(pf.StoragePath))
 	if err != nil {
-		return nil, fmt.Errorf("MinIO 获取 MD 文件失败: %w", err)
+		return nil, fmt.Errorf("读取 MD 文件失败: %w", err)
 	}
-	defer obj.Close()
-
-	_, err = obj.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("MinIO 文件不存在: %s", pf.MinioPath)
-	}
-
-	data, err := io.ReadAll(obj)
-	if err != nil {
-		return nil, fmt.Errorf("读取 MD 文件内容失败: %w", err)
-	}
-
 	return data, nil
 }
 
@@ -120,34 +97,16 @@ func (ps *PersonaStorage) UploadAvatar(personaID int64, fileName string, data []
 		ext = ".jpg"
 	}
 	objectName := fmt.Sprintf("avatar/persona/%d/%s%s", personaID, uuid.New().String(), ext)
-
-	contentType := "image/jpeg"
-	switch strings.ToLower(ext) {
-	case ".png":
-		contentType = "image/png"
-	case ".gif":
-		contentType = "image/gif"
-	case ".webp":
-		contentType = "image/webp"
+	if err := ps.write(objectName, data); err != nil {
+		return "", fmt.Errorf("写入人格头像失败: %w", err)
 	}
-
-	ctx := context.Background()
-	_, err := ps.client.PutObject(ctx, ps.bucket, objectName, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{
-		ContentType: contentType,
-	})
-	if err != nil {
-		return "", fmt.Errorf("MinIO 上传人格头像失败: %w", err)
-	}
-
-	url := fmt.Sprintf("/storage/%s/%s", ps.bucket, objectName)
-	return url, nil
+	return "/storage/" + objectName, nil
 }
 
 func (ps *PersonaStorage) DeleteMD(pf *model.PersonaFile) error {
-	ctx := context.Background()
-	err := ps.client.RemoveObject(ctx, ps.bucket, pf.MinioPath, minio.RemoveObjectOptions{})
-	if err != nil {
-		return fmt.Errorf("MinIO 删除 MD 文件失败: %w", err)
+	full := ps.absPath(pf.StoragePath)
+	if err := os.Remove(full); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("删除 MD 文件失败: %w", err)
 	}
 	return ps.pfRepo.Delete(pf.ID)
 }
@@ -158,39 +117,27 @@ func (ps *PersonaStorage) DeleteAllByPersona(persona *model.Persona) error {
 		return err
 	}
 	for _, pf := range files {
-		ps.client.RemoveObject(context.Background(), ps.bucket, pf.MinioPath, minio.RemoveObjectOptions{})
+		os.Remove(ps.absPath(pf.StoragePath))
 	}
 	return ps.pfRepo.DeleteByPersonaID(persona.ID)
 }
 
 func (ps *PersonaStorage) ListPersonaDirs() ([]string, error) {
-	ctx := context.Background()
-	objCh := ps.client.ListObjects(ctx, ps.bucket, minio.ListObjectsOptions{
-		Prefix:    "ai-persona/",
-		Recursive: false,
-	})
-
-	dirSet := make(map[string]bool)
-	for obj := range objCh {
-		if obj.Err != nil {
-			continue
+	base := ps.absPath(PersonaPrefix)
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
 		}
-		trimmed := strings.TrimPrefix(obj.Key, "ai-persona/")
-		parts := strings.SplitN(trimmed, "/", 2)
-		if len(parts) >= 1 {
-			dirSet[parts[0]] = true
-		}
+		return nil, err
 	}
-
 	var dirs []string
-	for d := range dirSet {
-		dirs = append(dirs, d)
+	for _, e := range entries {
+		if e.IsDir() {
+			dirs = append(dirs, e.Name())
+		}
 	}
 	return dirs, nil
-}
-
-func (ps *PersonaStorage) Bucket() string {
-	return ps.bucket
 }
 
 func detectModuleCategory(fileName string) string {
@@ -226,8 +173,4 @@ func SanitizeDirName(name string) string {
 		sanitized = "persona"
 	}
 	return strings.ToLower(sanitized)
-}
-
-func (ps *PersonaStorage) Client() *minio.Client {
-	return ps.client
 }

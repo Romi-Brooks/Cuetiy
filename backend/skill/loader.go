@@ -92,7 +92,7 @@ func (m *SkillManager) LoadSkills() error {
 func (m *SkillManager) seedFromLocalDir() error {
 	skillsDir := config.AppConfig.SkillsDir
 	if skillsDir == "" {
-		skillsDir = "../skills"
+		skillsDir = "./skills"
 	}
 
 	entries, err := os.ReadDir(skillsDir)
@@ -252,6 +252,73 @@ func (m *SkillManager) GetSystemPromptByPersona(personaID *int64) string {
 	return prompt
 }
 
+// GetCompiledByCategory 按 module_category 取单个技能模块全文（L2 注入）
+func (m *SkillManager) GetCompiledByCategory(personaID int64, category string) string {
+	if personaID == 0 || category == "" || m.personaCache == nil || m.personaStg == nil {
+		return ""
+	}
+	files, err := m.personaCache.GetFileIndex(personaID)
+	if err != nil {
+		return ""
+	}
+	var picked []model.PersonaFile
+	for _, f := range files {
+		if f.ModuleCategory == category {
+			picked = append(picked, f)
+		}
+	}
+	if len(picked) == 0 {
+		return ""
+	}
+	return CompilePromptFromFiles(picked, m.personaStg, m.personaCache, personaID)
+}
+
+// ListModuleSummaries 模块 category → 首行描述（L1 索引）
+func (m *SkillManager) ListModuleSummaries(personaID int64) map[string]string {
+	out := map[string]string{}
+	if personaID == 0 || m.personaCache == nil || m.personaStg == nil {
+		return out
+	}
+	files, err := m.personaCache.GetFileIndex(personaID)
+	if err != nil {
+		return out
+	}
+	for _, f := range files {
+		cat := f.ModuleCategory
+		if cat == "" {
+			cat = "general"
+		}
+		if _, ok := out[cat]; ok {
+			continue
+		}
+		content, cerr := m.personaCache.GetMDContent(personaID, &f)
+		if cerr != nil || content == "" {
+			if data, derr := m.personaStg.DownloadMD(&f); derr == nil {
+				content = string(data)
+				m.personaCache.SetMDContent(personaID, &f, content)
+			}
+		}
+		if content == "" {
+			out[cat] = f.FileName
+			continue
+		}
+		if parsed, perr := ParseSkillContent(f.FileName, content); perr == nil && len(parsed.KVList) > 0 {
+			out[cat] = parsed.KVList[0].Key + "：" + truncateRunes(parsed.KVList[0].Value, 60)
+		} else {
+			out[cat] = truncateRunes(strings.TrimSpace(content), 60)
+		}
+	}
+	return out
+}
+
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
+}
+
 func (m *SkillManager) GetPersonaNames() ([]string, error) {
 	return m.personaCache.GetPersonaNames()
 }
@@ -399,7 +466,7 @@ func (m *SkillManager) LoadMDFromLocal(persona *model.Persona) error {
 
 	skillsDir := config.AppConfig.SkillsDir
 	if skillsDir == "" {
-		skillsDir = "../skills"
+		skillsDir = "./skills"
 	}
 
 	dirPath := filepath.Join(skillsDir, persona.DirName)

@@ -24,7 +24,11 @@ export interface Message {
   id: number
   conversation_id: number
   role: 'user' | 'assistant'
+  /** text=文字气泡；voice=语音条（不可对文字朗读） */
+  message_type?: 'text' | 'voice'
   content: string
+  audio_url?: string
+  audio_duration_ms?: number
   created_at: string
   is_deleted: boolean
 }
@@ -42,6 +46,19 @@ export interface Persona {
   updated_at: string
   is_built_in?: boolean
   file_count?: number
+}
+
+export type PersonaFromServer = Persona
+
+export interface PersonaFile {
+  id: number
+  persona_id: number
+  file_name: string
+  storage_path: string
+  priority: number
+  module_category: string
+  file_size: number
+  created_at: string
 }
 
 export interface LoginResponse {
@@ -71,21 +88,6 @@ export interface ConversationResponse {
   conversation: Conversation
 }
 
-export interface PersonaFromServer {
-  id: number
-  user_id: number
-  name: string
-  nickname: string
-  description: string
-  dir_name: string
-  avatar: string
-  is_active: boolean
-  created_at: string
-  updated_at: string
-  is_built_in?: boolean
-  file_count?: number
-}
-
 export interface PersonasResponse {
   personas: PersonaFromServer[]
 }
@@ -93,17 +95,6 @@ export interface PersonasResponse {
 export interface PersonaResponse {
   persona: PersonaFromServer
   persona_files: PersonaFile[]
-}
-
-export interface PersonaFile {
-  id: number
-  persona_id: number
-  file_name: string
-  minio_path: string
-  priority: number
-  module_category: string
-  file_size: number
-  created_at: string
 }
 
 export interface FileRecord {

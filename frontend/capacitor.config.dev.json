@@ -1,0 +1,10 @@
+{
+  "appId": "com.rainyi.app",
+  "appName": "RainYi",
+  "webDir": "dist",
+  "server": {
+    "url": "http://192.168.1.100:5173",
+    "cleartext": true,
+    "androidScheme": "http"
+  }
+}

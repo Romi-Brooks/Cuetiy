@@ -12,6 +12,8 @@ type Client struct {
 	Conn   *websocket.Conn
 	Send   chan []byte
 	UserID int64
+	// PublicBase 对外基址（http://host:port），用于把相对资源路径转成绝对 URL
+	PublicBase string
 }
 
 type WebSocketHub struct {
@@ -20,8 +22,18 @@ type WebSocketHub struct {
 }
 
 type wsMessage struct {
-	Type    string `json:"type"`
-	Content string `json:"content,omitempty"`
+	Type           string      `json:"type"`
+	Content        string      `json:"content,omitempty"`
+	MessageID      int64       `json:"message_id,omitempty"`
+	ConversationID int64       `json:"conversation_id,omitempty"`
+	Debug          interface{} `json:"debug,omitempty"`
+	// complete 时一并携带的调试载荷（避免前端用临时 id 对不上）
+	TTSDebug   interface{} `json:"tts_debug,omitempty"`
+	ContextDebug interface{} `json:"context_debug,omitempty"`
+	// 语音条
+	MessageType     string `json:"message_type,omitempty"`
+	AudioURL        string `json:"audio_url,omitempty"`
+	AudioDurationMs int64  `json:"audio_duration_ms,omitempty"`
 }
 
 func NewWebSocketHub() *WebSocketHub {
@@ -100,6 +112,59 @@ func (h *WebSocketHub) SendComplete(userID int64, fullContent string) {
 	h.SendToUser(userID, wsMessage{Type: "complete", Content: fullContent})
 }
 
+func (h *WebSocketHub) SendCompleteWithID(userID int64, fullContent string, messageID, conversationID int64) {
+	h.SendToUser(userID, wsMessage{
+		Type:           "complete",
+		Content:        fullContent,
+		MessageID:      messageID,
+		ConversationID: conversationID,
+	})
+}
+
 func (h *WebSocketHub) SendError(userID int64, errMsg string) {
 	h.SendToUser(userID, wsMessage{Type: "error", Content: errMsg})
+}
+
+// SendCompleteWithDebug 推送完整回复（可带 TTS / 上下文 debug）
+func (h *WebSocketHub) SendCompleteWithDebug(
+	userID, conversationID int64,
+	content, messageType, audioURL string,
+	durationMs int64,
+	messageID int64,
+	ttsDebug, ctxDebug interface{},
+) {
+	h.SendToUser(userID, wsMessage{
+		Type:            "complete",
+		Content:         content,
+		ConversationID:  conversationID,
+		MessageID:       messageID,
+		MessageType:     messageType,
+		AudioURL:        audioURL,
+		AudioDurationMs: durationMs,
+		TTSDebug:        ttsDebug,
+		ContextDebug:    ctxDebug,
+	})
+}
+
+// SendCompleteVoice 推送语音条完整消息
+func (h *WebSocketHub) SendCompleteVoice(userID, conversationID int64, text, audioURL string, durationMs int64, ttsDebug, ctxDebug interface{}) {
+	h.SendCompleteWithDebug(userID, conversationID, text, "voice", audioURL, durationMs, 0, ttsDebug, ctxDebug)
+}
+
+// SendTTSDebug 推送本轮给 MiMo TTS 的请求明细
+func (h *WebSocketHub) SendTTSDebug(userID, conversationID int64, debug interface{}) {
+	h.SendToUser(userID, wsMessage{
+		Type:           "tts_debug",
+		ConversationID: conversationID,
+		Debug:          debug,
+	})
+}
+
+// SendContextDebug 推送本轮上下文组装明细（点 AI 名字可看）
+func (h *WebSocketHub) SendContextDebug(userID int64, conversationID int64, debug interface{}) {
+	h.SendToUser(userID, wsMessage{
+		Type:           "context_debug",
+		ConversationID: conversationID,
+		Debug:          debug,
+	})
 }

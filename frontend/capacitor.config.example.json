@@ -2,15 +2,11 @@
   "appId": "com.rainyi.app",
   "appName": "RainYi",
   "webDir": "dist",
-  "server": {
-    "url": "http://your-server.com:7654",
-    "cleartext": true,
-    "androidScheme": "http"
-  },
   "android": {
-    "buildOptions": {
-      "keystorePath": null,
-      "keystoreAlias": null
-    }
+    "allowMixedContent": true
+  },
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
   }
 }

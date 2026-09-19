@@ -1,12 +1,14 @@
 package service
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"rain-yi-backend/config"
 	"rain-yi-backend/model"
@@ -96,6 +98,26 @@ func (s *AIService) buildMessages(conv *model.Conversation, userMessage string, 
 	return messages
 }
 
+// SendMessageWithMessages 使用已组装好的 messages 发送（推荐路径）
+func (s *AIService) SendMessageWithMessages(messages []ChatMessage, onStream func(content string)) (string, error) {
+	cfg := config.AppConfig
+	if cfg.DeepSeekAPIKey == "" {
+		return "", fmt.Errorf("DeepSeek API Key 未配置，请在 .env 文件中设置 DEEPSEEK_API_KEY")
+	}
+	if len(messages) == 0 {
+		return "", fmt.Errorf("messages 为空")
+	}
+
+	reqBody := ChatRequest{
+		Model:       "deepseek-chat",
+		Messages:    messages,
+		Stream:      true,
+		Temperature: 0.8,
+		MaxTokens:   2000,
+	}
+	return s.doStream(reqBody, onStream)
+}
+
 func (s *AIService) SendMessage(conv *model.Conversation, userMessage string, history []model.Message, onStream func(content string)) (string, error) {
 	cfg := config.AppConfig
 	if cfg.DeepSeekAPIKey == "" {
@@ -111,7 +133,11 @@ func (s *AIService) SendMessage(conv *model.Conversation, userMessage string, hi
 		Temperature: 0.8,
 		MaxTokens:   2000,
 	}
+	return s.doStream(reqBody, onStream)
+}
 
+func (s *AIService) doStream(reqBody ChatRequest, onStream func(content string)) (string, error) {
+	cfg := config.AppConfig
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
 		return "", fmt.Errorf("请求序列化失败: %v", err)
@@ -124,8 +150,13 @@ func (s *AIService) SendMessage(conv *model.Conversation, userMessage string, hi
 
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+cfg.DeepSeekAPIKey)
+	httpReq.Header.Set("Accept", "text/event-stream")
 
-	client := &http.Client{}
+	client := &http.Client{
+		Transport: &http.Transport{
+			ResponseHeaderTimeout: 30 * time.Second,
+		},
+	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return "", fmt.Errorf("API 请求失败: %v", err)
@@ -133,58 +164,45 @@ func (s *AIService) SendMessage(conv *model.Conversation, userMessage string, hi
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
 		return "", fmt.Errorf("API 返回错误 [%d]: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var fullContent strings.Builder
-	reader := resp.Body
-	buf := make([]byte, 4096)
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	for {
-		n, err := reader.Read(buf)
-		if err != nil && err != io.EOF {
-			return fullContent.String(), fmt.Errorf("读取流失败: %v", err)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.HasPrefix(line, "data: ") {
+			continue
 		}
 
-		if n > 0 {
-				chunk := string(buf[:n])
-				lines := strings.Split(chunk, "\n")
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			break
+		}
 
-				for _, line := range lines {
-					line = strings.TrimSpace(line)
-					if !strings.HasPrefix(line, "data: ") {
-						continue
-					}
+		var streamChunk StreamChunk
+		if err := json.Unmarshal([]byte(data), &streamChunk); err != nil {
+			continue
+		}
 
-					data := strings.TrimPrefix(line, "data: ")
-					if data == "[DONE]" {
-						continue
-					}
-
-					var streamChunk StreamChunk
-					if err := json.Unmarshal([]byte(data), &streamChunk); err != nil {
-						continue
-					}
-
-					if len(streamChunk.Choices) > 0 {
-						content := streamChunk.Choices[0].Delta.Content
-						if content == "" {
-							continue
-						}
-						fullContent.WriteString(content)
-
-						if onStream != nil {
-							onStream(content)
-						}
-					}
-				}
+		if len(streamChunk.Choices) > 0 {
+			content := streamChunk.Choices[0].Delta.Content
+			if content == "" {
+				continue
 			}
+			fullContent.WriteString(content)
 
-			if err == io.EOF {
-				break
+			if onStream != nil {
+				onStream(content)
 			}
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fullContent.String(), fmt.Errorf("读取流失败: %v", err)
+	}
 
 	sanitized := utils.SanitizeEmotionalTags(fullContent.String())
 	return sanitized, nil
@@ -219,7 +237,9 @@ func (s *AIService) SendMessageNonStream(conv *model.Conversation, userMessage s
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+cfg.DeepSeekAPIKey)
 
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 60 * time.Second,
+	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return "", fmt.Errorf("API 请求失败: %v", err)
@@ -227,7 +247,7 @@ func (s *AIService) SendMessageNonStream(conv *model.Conversation, userMessage s
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
 		return "", fmt.Errorf("API 返回错误 [%d]: %s", resp.StatusCode, string(bodyBytes))
 	}
 

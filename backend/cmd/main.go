@@ -23,6 +23,10 @@ import (
 func main() {
 	cfg := config.LoadConfig()
 
+	if err := skill.EnsureSkillsDir(cfg.SkillsDir); err != nil {
+		log.Printf("警告: 初始化 skills 目录失败: %v", err)
+	}
+
 	db := config.InitDatabase()
 	model.AutoMigrate(db)
 
@@ -36,7 +40,7 @@ func main() {
 	fileRepo := repository.NewFileRepository()
 
 	personaStg := service.NewPersonaStorage(pfRepo)
-	fileStorage := service.NewMinioStorage(cfg, fileRepo)
+	fileStorage := service.NewLocalStorage(cfg, fileRepo)
 
 	skillManager := skill.NewSkillManager(personaRepo, pfRepo, personaStg)
 	if err := skillManager.LoadSkills(); err != nil {
@@ -47,9 +51,29 @@ func main() {
 	contextManager := service.NewContextManager(msgRepo)
 	hub := service.NewWebSocketHub()
 
+	ctxRepo := repository.NewContextRepo()
+	skillRouter := service.NewSkillRouter(aiService)
+	summarizer := service.NewSummaryService()
+	msgWriter := service.NewMessageWriter(msgRepo)
+	assembler := service.NewContextAssembler(ctxRepo, skillManager, skillRouter, summarizer, msgWriter)
+	archiveSvc := service.NewArchiveService(msgRepo, ctxRepo)
+	voiceRepo := repository.NewVoiceRepo()
+	ttsService := service.NewTTSService(fileStorage, voiceRepo)
+	asrService := service.NewASRService()
+
+	exportSvc := service.NewExportService(convRepo, msgRepo, ctxRepo, personaRepo)
+	importSvc := service.NewImportService(convRepo, msgRepo, ctxRepo, personaRepo)
+	exportController := controller.NewExportController(exportSvc, importSvc, func(id int64) (int64, bool) {
+		conv, err := convRepo.FindByID(id)
+		if err != nil || conv == nil {
+			return 0, false
+		}
+		return conv.UserID, true
+	})
+
 	authController := controller.NewAuthController(userRepo)
-	conversationController := controller.NewConversationController(convRepo, msgRepo, contextManager)
-	chatController := controller.NewChatController(msgRepo, convRepo, aiService, contextManager, hub)
+	conversationController := controller.NewConversationController(convRepo, msgRepo, contextManager, ctxRepo, archiveSvc)
+	chatController := controller.NewChatController(msgRepo, convRepo, aiService, contextManager, assembler, msgWriter, ttsService, hub)
 	personaController := controller.NewPersonaController(
 		personaRepo,
 		pfRepo,
@@ -60,6 +84,8 @@ func main() {
 	)
 	userController := controller.NewUserController(userRepo)
 	uploadController := controller.NewUploadController(fileRepo, userRepo, convRepo, fileStorage)
+	ttsController := controller.NewTTSController(ttsService, asrService, fileStorage, voiceRepo)
+	secretsController := controller.NewSecretsController()
 
 	r := gin.Default()
 
@@ -81,10 +107,7 @@ func main() {
 				return
 			}
 
-			minioStorage, ok := fileStorage.(*service.MinioStorage)
-			if ok {
-				objPath = strings.TrimPrefix(objPath, minioStorage.Bucket()+"/")
-			}
+			objPath = strings.TrimPrefix(objPath, "/")
 
 			obj, err := fileStorage.Get(objPath)
 			if err != nil {
@@ -108,6 +131,12 @@ func main() {
 				contentType = "image/svg+xml"
 			case ".md":
 				contentType = "text/markdown; charset=utf-8"
+			case ".wav":
+				contentType = "audio/wav"
+			case ".mp3":
+				contentType = "audio/mpeg"
+			case ".ogg":
+				contentType = "audio/ogg"
 			}
 
 			var fileSize int64 = -1
@@ -141,12 +170,17 @@ func main() {
 		{
 			authorized.GET("/user/profile", userController.GetProfile)
 			authorized.PUT("/user/profile", userController.UpdateProfile)
+			authorized.GET("/secrets/status", secretsController.GetStatus)
+			authorized.PUT("/secrets", secretsController.Update)
 
 			authorized.GET("/conversations", conversationController.GetConversations)
 			authorized.POST("/conversations", conversationController.CreateConversation)
 			authorized.GET("/conversations/:id/messages", conversationController.GetMessages)
 			authorized.DELETE("/conversations/:id/messages", conversationController.ClearMessages)
 			authorized.PUT("/conversations/:id/config", conversationController.UpdateConfig)
+			authorized.GET("/conversations/:id/export", exportController.ExportConversation)
+			authorized.GET("/export/chat", exportController.ExportAll)
+			authorized.POST("/import/chat", exportController.ImportChat)
 
 			personas := authorized.Group("/personas")
 			{
@@ -160,10 +194,17 @@ func main() {
 				personas.DELETE("/:id/files/:fileId", personaController.DeleteSkillFile)
 				personas.POST("/:id/avatar", personaController.UploadPersonaAvatar)
 				personas.POST("/load", personaController.LoadFromDirectory)
+			personas.POST("/:id/conversation", personaController.OpenConversation)
 			}
 
 			authorized.GET("/conversations/:id/persona", personaController.GetConversationPersona)
 			authorized.PUT("/conversations/:id/persona", personaController.SetConversationPersona)
+
+			authorized.POST("/tts", ttsController.Synthesize)
+			authorized.POST("/asr", ttsController.Transcribe)
+			authorized.GET("/voice", ttsController.GetMyVoice)
+			authorized.POST("/voice", ttsController.UploadMyVoice)
+			authorized.DELETE("/voice", ttsController.DeleteMyVoice)
 
 			uploads := authorized.Group("/upload")
 			{
@@ -181,5 +222,7 @@ func main() {
 	log.Printf("RainYi 服务启动于 %s", addr)
 	log.Printf("前端地址: %s", cfg.FrontendURL)
 
-	http.ListenAndServe(addr, r)
+	if err := http.ListenAndServe(addr, r); err != nil {
+		log.Fatalf("服务启动失败: %v", err)
+	}
 }

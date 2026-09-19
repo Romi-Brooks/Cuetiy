@@ -16,17 +16,23 @@ type ConversationController struct {
 	convRepo       *repository.ConversationRepository
 	msgRepo        *repository.MessageRepository
 	contextManager *service.ContextManager
+	ctxRepo        *repository.ContextRepo
+	archive        *service.ArchiveService
 }
 
 func NewConversationController(
 	convRepo *repository.ConversationRepository,
 	msgRepo *repository.MessageRepository,
 	contextManager *service.ContextManager,
+	ctxRepo *repository.ContextRepo,
+	archive *service.ArchiveService,
 ) *ConversationController {
 	return &ConversationController{
 		convRepo:       convRepo,
 		msgRepo:        msgRepo,
 		contextManager: contextManager,
+		ctxRepo:        ctxRepo,
+		archive:        archive,
 	}
 }
 
@@ -59,8 +65,13 @@ func (ctl *ConversationController) GetConversations(c *gin.Context) {
 		}
 	}
 
+	out := make([]model.Conversation, len(conversations))
+	for i := range conversations {
+		out[i] = absConversation(c.Request, &conversations[i])
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"conversations": conversations,
+		"conversations": out,
 	})
 }
 
@@ -86,11 +97,25 @@ func (ctl *ConversationController) GetMessages(c *gin.Context) {
 
 	limitStr := c.DefaultQuery("limit", "50")
 	offsetStr := c.DefaultQuery("offset", "0")
+	beforeIDStr := c.DefaultQuery("before_id", "0")
 	limit, _ := strconv.Atoi(limitStr)
 	offset, _ := strconv.Atoi(offsetStr)
+	beforeID, _ := strconv.ParseInt(beforeIDStr, 10, 64)
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
 
-	messages, err := ctl.msgRepo.FindByConversationID(convID, limit, offset)
-	if err != nil {
+	var messages []model.Message
+	var msgErr error
+	if beforeID > 0 || offset == 0 {
+		messages, msgErr = ctl.msgRepo.FindOlderThan(convID, beforeID, limit)
+	} else {
+		messages, msgErr = ctl.msgRepo.FindByConversationID(convID, limit, offset)
+	}
+	if msgErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取消息失败"})
 		return
 	}
@@ -98,9 +123,9 @@ func (ctl *ConversationController) GetMessages(c *gin.Context) {
 	total, _ := ctl.msgRepo.CountByConversationID(convID)
 
 	c.JSON(http.StatusOK, gin.H{
-		"messages":  messages,
-		"total":     total,
-		"conversation": conv,
+		"messages":     absMessages(c.Request, messages),
+		"total":        total,
+		"conversation": absConversation(c.Request, conv),
 	})
 }
 
@@ -124,12 +149,34 @@ func (ctl *ConversationController) ClearMessages(c *gin.Context) {
 		return
 	}
 
+	// 先归档消息 + 记忆卡到文件（Skills/人格不动），再软删消息
+	archivePath := ""
+	archiveCount := 0
+	if ctl.archive != nil {
+		path, n, aerr := ctl.archive.ArchiveConversation(conv)
+		if aerr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "归档失败: " + aerr.Error()})
+			return
+		}
+		archivePath, archiveCount = path, n
+	}
+
+	// 清空：消息 + 摘要 + 技能激活态；记忆卡保留（可溯源且跨清空记得用户）
 	if err := ctl.contextManager.ResetContext(convID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "清空记录失败"})
 		return
 	}
+	if ctl.ctxRepo != nil {
+		_ = ctl.ctxRepo.DeleteSummary(convID)
+		_ = ctl.ctxRepo.ResetSkillState(convID)
+		// 保留 ConversationMemory 与 ChatArchive
+	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "聊天记录已清空"})
+	c.JSON(http.StatusOK, gin.H{
+		"message":        "聊天记录已清空（已归档，Skills 保留）",
+		"archive_path":   archivePath,
+		"archive_count":  archiveCount,
+	})
 }
 
 func (ctl *ConversationController) UpdateConfig(c *gin.Context) {
@@ -184,7 +231,7 @@ func (ctl *ConversationController) UpdateConfig(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":      "更新成功",
-		"conversation": conv,
+		"conversation": absConversation(c.Request, conv),
 	})
 }
 
@@ -212,6 +259,6 @@ func (ctl *ConversationController) CreateConversation(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":      "创建成功",
-		"conversation": conv,
+		"conversation": absConversation(c.Request, conv),
 	})
 }

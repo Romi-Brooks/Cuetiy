@@ -5,31 +5,40 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "type-check": "vue-tsc --noEmit",
+    "type-check": "tsc --noEmit",
     "cap:sync": "npx cap sync",
     "cap:open": "npx cap open android",
-    "cap:build": "pnpm build && npx cap sync && cd android && gradlew assembleDebug"
+    "cap:build": "pnpm build && npx cap sync && cd android && gradlew assembleDebug",
+    "tauri": "tauri",
+    "tauri:dev": "cross-env RAIN_YI_PACKAGE=thin tauri dev",
+    "tauri:dev:unified": "cross-env RAIN_YI_PACKAGE=unified tauri dev",
+    "tauri:build:thin": "pnpm build && cross-env RAIN_YI_PACKAGE=thin tauri build",
+    "tauri:build:unified": "pnpm build && cross-env RAIN_YI_PACKAGE=unified tauri build",
+    "apk:thin": "pnpm build && npx cap sync android && cd android && gradlew.bat assembleDebug"
   },
   "dependencies": {
     "@capacitor/status-bar": "^7.0.6",
-    "pinia": "^2.1.7",
-    "vue": "^3.4.0",
-    "vue-router": "^4.2.5"
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "zustand": "^5.0.2"
   },
   "devDependencies": {
     "@capacitor/android": "^7.0.0",
     "@capacitor/cli": "^7.0.0",
     "@capacitor/core": "^7.0.0",
-    "@vitejs/plugin-vue": "^5.0.0",
-    "@vue/tsconfig": "^0.9.1",
+    "@tauri-apps/cli": "^2.0.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.17",
+    "cross-env": "^7.0.3",
     "postcss": "^8.4.33",
     "tailwindcss": "^3.4.1",
-    "typescript": "^6.0.3",
-    "vite": "^5.0.12",
-    "vue-tsc": "^3.2.8"
+    "typescript": "^5.6.3",
+    "vite": "^5.0.12"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

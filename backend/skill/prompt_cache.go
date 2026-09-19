@@ -77,14 +77,14 @@ func (pc *PromptCache) Invalidate(personaID int64) {
 }
 
 func (pc *PromptCache) CompileAndCache(personaID int64) string {
-	prompt := pc.buildFromMinIO(personaID)
+	prompt := pc.buildFromStorage(personaID)
 	if prompt != "" {
 		pc.Set(personaID, prompt)
 	}
 	return prompt
 }
 
-func (pc *PromptCache) buildFromMinIO(personaID int64) string {
+func (pc *PromptCache) buildFromStorage(personaID int64) string {
 	if pc.personaCache == nil || pc.personaStg == nil {
 		return ""
 	}

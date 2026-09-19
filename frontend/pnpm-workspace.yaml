@@ -1,0 +1,3 @@
+# pnpm 10+ build scripts allowlist
+allowBuilds:
+  esbuild: true

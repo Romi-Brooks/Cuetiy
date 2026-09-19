@@ -1,8 +1,11 @@
 import type { Message } from '../types/api'
 
+export { resolveAssetUrl, defaultAvatarUrl, DEFAULT_AVATAR_PATH } from './url'
+
 export function formatTime(dateStr: string): string {
   if (!dateStr) return ''
   const date = new Date(dateStr)
+  if (Number.isNaN(date.getTime())) return ''
   const now = new Date()
   const diff = now.getTime() - date.getTime()
   const oneDay = 24 * 60 * 60 * 1000
@@ -25,6 +28,7 @@ export function formatTime(dateStr: string): string {
 export function formatConversationTime(dateStr: string): string {
   if (!dateStr) return ''
   const date = new Date(dateStr)
+  if (Number.isNaN(date.getTime())) return ''
   const now = new Date()
   const diff = now.getTime() - date.getTime()
   const oneDay = 24 * 60 * 60 * 1000
@@ -47,12 +51,6 @@ export function formatConversationTime(dateStr: string): string {
   }
 
   return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
-}
-
-export function sanitizeHtml(text: string): string {
-  const div = document.createElement('div')
-  div.textContent = text
-  return div.innerHTML
 }
 
 export function truncate(str: string, len = 30): string {

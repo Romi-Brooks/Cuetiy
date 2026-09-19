@@ -1,29 +1,67 @@
-# env
+# secrets
 .env
 .env.local
-*.env.local
-.env.production.local
+.env.*.local
 .env.production
 .env.development
-
-# backend
 backend/.env
+**/.env
 
-# frontend
+# example
+!**/.env.example
+!**/.env.*.example
+!frontend/src-tauri/resources/env/.env.unified
+!backend/.env.example
+
+# Node
+node_modules/
 frontend/node_modules/
 frontend/dist/
 frontend/package-lock.json
-frontend/vite.config.ts
 
-# Android Apk
-frontend/android/
+# output
+backend/output/
+dist-packages/
+*.msi
+*.exe
+*.apk
+*.aab
+*.AppImage
+*.deb
+*.rpm
+*.zip
+*.tar
+*.tar.gz
 
-# Capacitor config
-frontend/capacitor.config.json
+*.db
+*.sqlite
+*.sqlite3
 
-# Skills
-skills/rain
+# Tauri / Rust
+frontend/src-tauri/target/
+frontend/src-tauri/binaries/
+frontend/src-tauri/gen/
+frontend/desktop-host/desktop-host.exe
+cargo-build*.log
+tauri-*.log
 
+# Android / Capacitor
+frontend/android/.gradle/
+frontend/android/app/build/
+frontend/android/build/
+frontend/android/local.properties
+frontend/android/.idea/
+frontend/android/capacitor-cordova-android-plugins/
+frontend/android/app/src/main/assets/public/
+frontend/android/app/src/main/assets/capacitor.config.json
+frontend/android/app/src/main/assets/capacitor.plugins.json
+*.apk
+
+# logs
+*.log
+npm-debug.log*
+scripts/*-build.log
+scripts/*-build.err.log
 
 # IDE
 .idea/
@@ -31,14 +69,8 @@ skills/rain
 *.swp
 *.swo
 *~
-
-# system
 .DS_Store
 Thumbs.db
-
-# log
-*.log
-npm-debug.log*
 
 # temp
 tmp/
