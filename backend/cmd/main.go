@@ -81,6 +81,7 @@ func main() {
 		skillManager.PromptCache(),
 		skillManager.PersonaCache(),
 		personaStg,
+		skillManager,
 	)
 	userController := controller.NewUserController(userRepo)
 	uploadController := controller.NewUploadController(fileRepo, userRepo, convRepo, fileStorage)

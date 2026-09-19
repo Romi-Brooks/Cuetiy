@@ -1,15 +1,18 @@
 import { useState } from 'react'
 import type { ContextDebugInfo, TTSDebugInfo } from '../stores/chat'
+import type { ReplySegment } from '../types/api'
+import { splitReplySegments } from '../utils/segments'
 
 type Tab = 'llm' | 'ctx' | 'tts'
 
-/** 单条消息 Debug 弹窗：LLM / 上下文 / TTS */
+/** 单条消息 Debug 弹窗：LLM / 上下文 / TTS / 分段 */
 export function MsgDebugModal({
   open,
   onClose,
   llmText,
   ttsDebug,
   contextDebug,
+  segments,
   title,
 }: {
   open: boolean
@@ -17,10 +20,15 @@ export function MsgDebugModal({
   llmText: string
   ttsDebug?: TTSDebugInfo | null
   contextDebug?: ContextDebugInfo | null
+  /** 完整回复的显式小段；缺省时按 LLM 文本本地切分 */
+  segments?: ReplySegment[] | null
   title?: string
 }) {
   const [tab, setTab] = useState<Tab>('llm')
   if (!open) return null
+
+  const segs =
+    segments && segments.length > 0 ? segments : splitReplySegments(llmText || '')
 
   const tabs: { key: Tab; label: string; disabled?: boolean }[] = [
     { key: 'llm', label: 'LLM' },
@@ -73,9 +81,47 @@ export function MsgDebugModal({
 
         <div className="flex-1 overflow-y-auto px-4 py-3">
           {active === 'llm' && (
-            <pre className="text-xs bg-gray-900 text-gray-100 rounded-xl px-3 py-3 whitespace-pre-wrap break-words max-h-[55vh] overflow-y-auto">
-              {llmText || '（无）'}
-            </pre>
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-1.5">
+                <span className="px-2 py-1 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                  分段 {segs.length}
+                </span>
+                {segs.length > 1 &&
+                  segs.map((s) => (
+                    <span
+                      key={s.seg_id}
+                      className="px-2 py-1 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                      title={s.content.slice(0, 40)}
+                    >
+                      #{s.index + 1} {s.content.slice(0, 8)}
+                      {s.content.length > 8 ? '…' : ''}
+                    </span>
+                  ))}
+              </div>
+              {segs.length > 1 && (
+                <div className="space-y-1.5">
+                  {segs.map((s) => (
+                    <div
+                      key={s.seg_id}
+                      className="text-[11px] text-gray-500 dark:text-gray-400 border border-dashed border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5"
+                    >
+                      <span className="font-medium">seg {s.seg_id}</span>
+                      {s.start != null && s.end != null && (
+                        <span className="ml-2 opacity-70">
+                          [{s.start}, {s.end})
+                        </span>
+                      )}
+                      <div className="mt-1 text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words">
+                        {s.content}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <pre className="text-xs bg-gray-900 text-gray-100 rounded-xl px-3 py-3 whitespace-pre-wrap break-words max-h-[40vh] overflow-y-auto">
+                {llmText || '（无）'}
+              </pre>
+            </div>
           )}
 
           {active === 'ctx' && contextDebug && (

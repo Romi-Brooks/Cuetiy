@@ -1234,6 +1234,11 @@ export function MainChat() {
           setDebugExpandedMsgId(null)
         }}
         llmText={debugMsgContent}
+        segments={(() => {
+          if (debugExpandedMsgId == null) return null
+          const m = chat.messages.find((x) => x.id === debugExpandedMsgId)
+          return m?.segments?.length ? m.segments : null
+        })()}
         ttsDebug={(() => {
           if (debugExpandedMsgId == null) return null
           const m = chat.messages.find((x) => x.id === debugExpandedMsgId)

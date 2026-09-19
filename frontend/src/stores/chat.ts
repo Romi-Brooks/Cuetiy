@@ -454,6 +454,7 @@ export const useChatStore = create<ChatState>((set, get) => {
             message_type?: 'text' | 'voice'
             audio_url?: string
             audio_duration_ms?: number
+            segments?: Message['segments']
           }
           switch (data.type) {
             case 'context_debug': {
@@ -508,6 +509,7 @@ export const useChatStore = create<ChatState>((set, get) => {
                   content: full,
                   audio_url: data.audio_url,
                   audio_duration_ms: data.audio_duration_ms,
+                  segments: data.segments?.length ? data.segments : undefined,
                   created_at: new Date().toISOString(),
                   is_deleted: false,
                 }

@@ -20,6 +20,14 @@ export interface Conversation {
   last_message?: { content: string; role: string; created_at: string } | null
 }
 
+export interface ReplySegment {
+  index: number
+  seg_id: string
+  content: string
+  start?: number
+  end?: number
+}
+
 export interface Message {
   id: number
   conversation_id: number
@@ -29,6 +37,8 @@ export interface Message {
   content: string
   audio_url?: string
   audio_duration_ms?: number
+  /** AI 完整回复的显式小段；无则前端按规则切分 */
+  segments?: ReplySegment[]
   created_at: string
   is_deleted: boolean
 }

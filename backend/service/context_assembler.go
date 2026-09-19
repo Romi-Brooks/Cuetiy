@@ -9,6 +9,7 @@ import (
 	"cuetiy-backend/config"
 	"cuetiy-backend/model"
 	"cuetiy-backend/repository"
+	"cuetiy-backend/skill"
 )
 
 // PromptPart system 分段（Debug 用）
@@ -71,6 +72,7 @@ type skillPromptSource interface {
 	GetSystemPromptByPersona(personaID *int64) string
 	GetCompiledByCategory(personaID int64, category string) string
 	ListModuleSummaries(personaID int64) map[string]string
+	GetSkillRegistry(personaID int64) *skill.SkillRegistry
 }
 
 func NewContextAssembler(
@@ -194,8 +196,10 @@ func (a *ContextAssembler) Assemble(conv *model.Conversation, userMsg string) (*
 	}
 
 	hint := summaryText
-	emotion := a.router.AnalyzeEmotion(userMsg, hint)
-	cats := CategoriesForEmotion(emotion)
+	personaID := personaIDInt(conv.PersonaID)
+	reg := a.skillMgr.GetSkillRegistry(personaID)
+	emotion := a.router.Route(userMsg, hint, reg)
+	cats := emotion.Categories
 
 	state, _ := a.ctxRepo.GetSkillState(conv.ID)
 	if state == nil {
@@ -207,6 +211,7 @@ func (a *ContextAssembler) Assemble(conv *model.Conversation, userMsg string) (*
 	if cfg != nil && cfg.SkillL2TTLTurns > 0 {
 		ttl = cfg.SkillL2TTLTurns
 	}
+	ttl = reg.TTLForCategories(cats, ttl)
 	expireAt := state.TurnCounter + int64(ttl)
 	for _, c := range cats {
 		active[c] = expireAt

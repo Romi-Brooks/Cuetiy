@@ -10,6 +10,7 @@ import (
 	"cuetiy-backend/config"
 	"cuetiy-backend/model"
 	"cuetiy-backend/repository"
+	"cuetiy-backend/skill"
 
 	"github.com/google/uuid"
 )
@@ -68,7 +69,19 @@ func (ps *PersonaStorage) UploadMD(persona *model.Persona, fileName string, cont
 		return nil, fmt.Errorf("写入 MD 文件失败: %w", err)
 	}
 
+	// frontmatter.category 优先，文件名启发式仅作回退
 	category := detectModuleCategory(fileName)
+	if parsed, err := skill.ParseSkillContent(fileName, string(content)); err == nil && parsed != nil {
+		if c := strings.TrimSpace(parsed.Meta.Category); c != "" {
+			category = c
+		}
+		if priority == 0 || parsed.Meta.PriorityNum > 0 || parsed.Meta.Priority != "" {
+			// Upload 传入的 priority 为兼容值；frontmatter 明确时覆盖
+			if parsed.Meta.PriorityNum > 0 || parsed.Meta.Priority != "" {
+				priority = parsed.Meta.NumericPriority()
+			}
+		}
+	}
 	pf := &model.PersonaFile{
 		PersonaID:      persona.ID,
 		FileName:       fileName,
@@ -141,25 +154,7 @@ func (ps *PersonaStorage) ListPersonaDirs() ([]string, error) {
 }
 
 func detectModuleCategory(fileName string) string {
-	name := strings.ToLower(fileName)
-	switch {
-	case strings.Contains(name, "persona-base"), strings.Contains(name, "persona_base"):
-		return "persona_base"
-	case strings.Contains(name, "persona-tone"), strings.Contains(name, "persona_tone"):
-		return "persona_tone"
-	case strings.Contains(name, "forbidden"), strings.Contains(name, "rule"):
-		return "forbidden_rules"
-	case strings.Contains(name, "emotion"), strings.Contains(name, "companion"):
-		return "emotion_companion"
-	case strings.Contains(name, "professional"), strings.Contains(name, "skill"):
-		return "professional_skills"
-	case strings.Contains(name, "style"):
-		return "style_switch"
-	case strings.Contains(name, "trigger"), strings.Contains(name, "pet"):
-		return "trigger_rules"
-	default:
-		return "general"
-	}
+	return skill.DetectCategoryFromFileName(fileName)
 }
 
 func SanitizeDirName(name string) string {

@@ -34,6 +34,8 @@ type wsMessage struct {
 	MessageType     string `json:"message_type,omitempty"`
 	AudioURL        string `json:"audio_url,omitempty"`
 	AudioDurationMs int64  `json:"audio_duration_ms,omitempty"`
+	// 显式段分割：complete 时携带，前端按段渲染
+	Segments []ReplySegment `json:"segments,omitempty"`
 }
 
 func NewWebSocketHub() *WebSocketHub {
@@ -125,13 +127,14 @@ func (h *WebSocketHub) SendError(userID int64, errMsg string) {
 	h.SendToUser(userID, wsMessage{Type: "error", Content: errMsg})
 }
 
-// SendCompleteWithDebug 推送完整回复（可带 TTS / 上下文 debug）
+// SendCompleteWithDebug 推送完整回复（可带 TTS / 上下文 debug / 显式分段）
 func (h *WebSocketHub) SendCompleteWithDebug(
 	userID, conversationID int64,
 	content, messageType, audioURL string,
 	durationMs int64,
 	messageID int64,
 	ttsDebug, ctxDebug interface{},
+	segments []ReplySegment,
 ) {
 	h.SendToUser(userID, wsMessage{
 		Type:            "complete",
@@ -143,12 +146,13 @@ func (h *WebSocketHub) SendCompleteWithDebug(
 		AudioDurationMs: durationMs,
 		TTSDebug:        ttsDebug,
 		ContextDebug:    ctxDebug,
+		Segments:        segments,
 	})
 }
 
 // SendCompleteVoice 推送语音条完整消息
-func (h *WebSocketHub) SendCompleteVoice(userID, conversationID int64, text, audioURL string, durationMs int64, ttsDebug, ctxDebug interface{}) {
-	h.SendCompleteWithDebug(userID, conversationID, text, "voice", audioURL, durationMs, 0, ttsDebug, ctxDebug)
+func (h *WebSocketHub) SendCompleteVoice(userID, conversationID int64, text, audioURL string, durationMs int64, ttsDebug, ctxDebug interface{}, segments []ReplySegment) {
+	h.SendCompleteWithDebug(userID, conversationID, text, "voice", audioURL, durationMs, 0, ttsDebug, ctxDebug, segments)
 }
 
 // SendTTSDebug 推送本轮给 MiMo TTS 的请求明细

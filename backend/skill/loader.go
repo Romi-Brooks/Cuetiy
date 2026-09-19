@@ -22,27 +22,76 @@ type MDFileStorage interface {
 	DeleteAllByPersona(persona *model.Persona) error
 }
 
+// SkillTriggers 技能自声明的触发条件（通用协议核心，路由器不写死业务词表）
+type SkillTriggers struct {
+	Emotions []string `yaml:"emotions"`
+	Intents  []string `yaml:"intents"`
+	Domains  []string `yaml:"domains"`
+	Keywords []string `yaml:"keywords"`
+	Tags     []string `yaml:"tags"`
+}
+
+func (t SkillTriggers) AllTags() []string {
+	seen := map[string]struct{}{}
+	var out []string
+	add := func(list []string) {
+		for _, s := range list {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				continue
+			}
+			if _, ok := seen[s]; ok {
+				continue
+			}
+			seen[s] = struct{}{}
+			out = append(out, s)
+		}
+	}
+	add(t.Emotions)
+	add(t.Intents)
+	add(t.Domains)
+	add(t.Tags)
+	return out
+}
+
 type SkillMeta struct {
-	Name         string `yaml:"name"`
-	Description  string `yaml:"description"`
-	AllowedTools string `yaml:"allowed-tools"`
-	Priority     string `yaml:"priority"`
-	Category     string `yaml:"category"`
+	Name         string        `yaml:"name"`
+	Description  string        `yaml:"description"`
+	AllowedTools string        `yaml:"allowed-tools"`
+	Priority     string        `yaml:"priority"`    // 兼容旧中文描述
+	PriorityNum  int           `yaml:"priority_num"` // 0-100，越大越优先（同标签命中时）
+	Category     string        `yaml:"category"`
+	LoadMode     string        `yaml:"load_mode"`  // always | index | trigger
+	TTLTurns     int           `yaml:"ttl_turns"`  // L2 激活轮数，0 表示用全局默认
+	Triggers     SkillTriggers `yaml:"triggers"`
+	Examples     []string      `yaml:"examples"`
+}
+
+// ResolvePriority 数值优先；未写 priority_num 时回退旧文案启发式
+func (m *SkillMeta) ResolvePriority() int {
+	if m.PriorityNum > 0 {
+		return m.PriorityNum
+	}
+	switch {
+	case m.Priority == "":
+		return 50
+	case strings.Contains(m.Priority, "最高"), strings.Contains(m.Priority, "high"), strings.Contains(m.Priority, "urgent"):
+		return 90
+	case strings.Contains(m.Priority, "高"):
+		return 80
+	case strings.Contains(m.Priority, "中"), strings.Contains(m.Priority, "medium"):
+		return 50
+	case strings.Contains(m.Priority, "低"), strings.Contains(m.Priority, "low"):
+		return 20
+	default:
+		return 50
+	}
 }
 
 func (m *SkillMeta) NumericPriority() int {
-	switch {
-	case m.Priority == "":
-		return 5
-	case strings.Contains(m.Priority, "高"), strings.Contains(m.Priority, "high"), strings.Contains(m.Priority, "urgent"):
-		return 0
-	case strings.Contains(m.Priority, "中"), strings.Contains(m.Priority, "medium"):
-		return 5
-	case strings.Contains(m.Priority, "低"), strings.Contains(m.Priority, "low"):
-		return 10
-	default:
-		return 5
-	}
+	// DB priority 字段：数字越小越靠前（沿用旧语义）
+	p := m.ResolvePriority()
+	return 100 - p
 }
 
 type ParsedSkill struct {
@@ -62,16 +111,70 @@ type SkillManager struct {
 	promptCache   *PromptCache
 	personaCache  *PersonaCache
 	personaStg    MDFileStorage
+	regMu         sync.RWMutex
+	registryCache map[int64]*SkillRegistry
 }
 
 func NewSkillManager(repo *repository.PersonaRepository, pfRepo *repository.PersonaFileRepository, personaStg MDFileStorage) *SkillManager {
 	personaCache := NewPersonaCache(repo, pfRepo)
 	return &SkillManager{
-		repo:         repo,
-		promptCache:  NewPromptCache(personaCache, personaStg),
-		personaCache: personaCache,
-		personaStg:   personaStg,
+		repo:          repo,
+		promptCache:   NewPromptCache(personaCache, personaStg),
+		personaCache:  personaCache,
+		personaStg:    personaStg,
+		registryCache: make(map[int64]*SkillRegistry),
 	}
+}
+
+// GetSkillRegistry 获取人格技能注册表（frontmatter 驱动，带缓存）
+func (m *SkillManager) GetSkillRegistry(personaID int64) *SkillRegistry {
+	if m == nil || personaID == 0 {
+		return nil
+	}
+	m.regMu.RLock()
+	if reg, ok := m.registryCache[personaID]; ok {
+		m.regMu.RUnlock()
+		return reg
+	}
+	m.regMu.RUnlock()
+
+	if m.personaCache == nil {
+		return nil
+	}
+	files, err := m.personaCache.GetFileIndex(personaID)
+	if err != nil || len(files) == 0 {
+		return nil
+	}
+	reg := BuildRegistry(personaID, files, func(pf *model.PersonaFile) string {
+		content, cerr := m.personaCache.GetMDContent(personaID, pf)
+		if cerr != nil || content == "" {
+			if m.personaStg != nil {
+				if data, derr := m.personaStg.DownloadMD(pf); derr == nil {
+					content = string(data)
+					m.personaCache.SetMDContent(personaID, pf, content)
+				}
+			}
+		}
+		return content
+	})
+	m.regMu.Lock()
+	m.registryCache[personaID] = reg
+	m.regMu.Unlock()
+	return reg
+}
+
+// InvalidateRegistry 人格文件变更后清除注册表缓存
+func (m *SkillManager) InvalidateRegistry(personaID int64) {
+	if m == nil {
+		return
+	}
+	m.regMu.Lock()
+	if personaID == 0 {
+		m.registryCache = make(map[int64]*SkillRegistry)
+	} else {
+		delete(m.registryCache, personaID)
+	}
+	m.regMu.Unlock()
 }
 
 func (m *SkillManager) LoadSkills() error {
@@ -124,6 +227,8 @@ func (m *SkillManager) seedFromLocalDir() error {
 		personas, _ := m.repo.FindActive()
 		m.personaCache.WarmupList(personas)
 	}
+
+	m.InvalidateRegistry(0)
 
 	return nil
 }
@@ -344,6 +449,7 @@ func (m *SkillManager) Refresh() error {
 	}
 
 	m.personaCache.InvalidateAll()
+	m.InvalidateRegistry(0)
 
 	return nil
 }
@@ -426,6 +532,23 @@ func parseKVFromBody(lines []string) []ParsedKV {
 }
 
 func CompilePromptFromFiles(files []model.PersonaFile, personaStg MDFileStorage, personaCache *PersonaCache, personaID int64) string {
+	return compilePromptFromFiles(files, personaStg, personaCache, personaID, nil)
+}
+
+// CompileCorePromptFromFiles 仅编译 load_mode=always 的核心模块（L0）
+func CompileCorePromptFromFiles(files []model.PersonaFile, personaStg MDFileStorage, personaCache *PersonaCache, personaID int64) string {
+	return compilePromptFromFiles(files, personaStg, personaCache, personaID, func(meta SkillMeta, category string) bool {
+		return ResolveLoadMode(meta.LoadMode, category) == LoadModeAlways
+	})
+}
+
+func compilePromptFromFiles(
+	files []model.PersonaFile,
+	personaStg MDFileStorage,
+	personaCache *PersonaCache,
+	personaID int64,
+	keep func(meta SkillMeta, category string) bool,
+) string {
 	var builder strings.Builder
 
 	for _, f := range files {
@@ -446,9 +569,19 @@ func CompilePromptFromFiles(files []model.PersonaFile, personaStg MDFileStorage,
 
 		parsed, parseErr := ParseSkillContent(f.FileName, mdContent)
 		if parseErr != nil {
+			if keep != nil && !keep(SkillMeta{}, f.ModuleCategory) {
+				continue
+			}
 			builder.WriteString(mdContent)
 			builder.WriteString("\n\n")
 			continue
+		}
+
+		if keep != nil {
+			cat := ResolveCategory(parsed.Meta.Category, f.FileName)
+			if !keep(parsed.Meta, cat) {
+				continue
+			}
 		}
 
 		for _, kv := range parsed.KVList {

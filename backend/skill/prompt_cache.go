@@ -94,7 +94,8 @@ func (pc *PromptCache) buildFromStorage(personaID int64) string {
 		return ""
 	}
 
-	return CompilePromptFromFiles(files, pc.personaStg, pc.personaCache, personaID)
+	// system 常驻只编译 L0（always）；trigger 模块由 L2 按需注入
+	return CompileCorePromptFromFiles(files, pc.personaStg, pc.personaCache, personaID)
 }
 
 func (pc *PromptCache) Warmup(personas []struct {

@@ -20,12 +20,13 @@ import (
 )
 
 type PersonaController struct {
-	personaRepo  *repository.PersonaRepository
-	pfRepo       *repository.PersonaFileRepository
-	convRepo     *repository.ConversationRepository
-	promptCache  *skill.PromptCache
-	personaCache *skill.PersonaCache
-	personaStg   *service.PersonaStorage
+	personaRepo   *repository.PersonaRepository
+	pfRepo        *repository.PersonaFileRepository
+	convRepo      *repository.ConversationRepository
+	promptCache   *skill.PromptCache
+	personaCache  *skill.PersonaCache
+	personaStg    *service.PersonaStorage
+	skillManager  *skill.SkillManager
 }
 
 func NewPersonaController(
@@ -35,6 +36,7 @@ func NewPersonaController(
 	promptCache *skill.PromptCache,
 	personaCache *skill.PersonaCache,
 	personaStg *service.PersonaStorage,
+	skillManager *skill.SkillManager,
 ) *PersonaController {
 	return &PersonaController{
 		personaRepo:  personaRepo,
@@ -43,6 +45,16 @@ func NewPersonaController(
 		promptCache:  promptCache,
 		personaCache: personaCache,
 		personaStg:   personaStg,
+		skillManager: skillManager,
+	}
+}
+
+func (ctl *PersonaController) invalidatePersonaCaches(personaID int64) {
+	if ctl.promptCache != nil {
+		ctl.promptCache.Invalidate(personaID)
+	}
+	if ctl.skillManager != nil {
+		ctl.skillManager.InvalidateRegistry(personaID)
 	}
 }
 
@@ -326,8 +338,8 @@ func (ctl *PersonaController) UploadSkillFile(c *gin.Context) {
 		uploaded = append(uploaded, header.Filename)
 	}
 
-	if ctl.promptCache != nil && len(uploaded) > 0 {
-		ctl.promptCache.Invalidate(id)
+	if len(uploaded) > 0 {
+		ctl.invalidatePersonaCaches(id)
 	}
 
 	response := gin.H{"message": fmt.Sprintf("成功上传 %d 个文件", len(uploaded))}
@@ -385,9 +397,7 @@ func (ctl *PersonaController) DeleteSkillFile(c *gin.Context) {
 		return
 	}
 
-	if ctl.promptCache != nil {
-		ctl.promptCache.Invalidate(personaID)
-	}
+	ctl.invalidatePersonaCaches(personaID)
 
 	c.JSON(http.StatusOK, gin.H{"message": "删除成功"})
 }
@@ -681,10 +691,8 @@ func (ctl *PersonaController) LoadFromDirectory(c *gin.Context) {
 		}
 	}
 
-	if ctl.promptCache != nil {
-		for _, personaID := range loadedPersonas {
-			ctl.promptCache.Invalidate(personaID)
-		}
+	for _, personaID := range loadedPersonas {
+		ctl.invalidatePersonaCaches(personaID)
 	}
 
 	c.JSON(http.StatusOK, gin.H{

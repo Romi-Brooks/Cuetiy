@@ -227,6 +227,9 @@ func (ctl *ChatController) readPump(client *service.Client) {
 			CreatedAt:      time.Now(),
 		}
 
+		// 完整回复 → 显式小段（本期只做切分展示，不做流式打断）
+		segments := service.SplitReplySegments(aiResponse)
+
 		// 语音条策略：仅用户点名 want_voice 时合成
 		if ctl.tts != nil && ctl.shouldSendVoice(conv.ID, msg.WantVoice) {
 			url, _, ttsDbg, terr := ctl.tts.Synthesize(userID, aiResponse, "", assembled.Emotion)
@@ -251,17 +254,17 @@ func (ctl *ChatController) readPump(client *service.Client) {
 					ttsAny = ttsDbg
 				}
 				// complete 内嵌 tts+ctx，前端按 audio_url 落库，不再依赖临时 id
-				ctl.hub.SendCompleteVoice(userID, conv.ID, aiResponse, absAudio, aiMessage.AudioDurationMs, ttsAny, ctxDebug)
+				ctl.hub.SendCompleteVoice(userID, conv.ID, aiResponse, absAudio, aiMessage.AudioDurationMs, ttsAny, ctxDebug, segments)
 			} else {
 				if terr != nil {
 					log.Printf("[tts] voice bar failed: %v", terr)
 				}
 				ctl.noteTextTurn(conv.ID)
-				ctl.hub.SendCompleteWithDebug(userID, conv.ID, aiResponse, "text", "", 0, 0, nil, ctxDebug)
+				ctl.hub.SendCompleteWithDebug(userID, conv.ID, aiResponse, "text", "", 0, 0, nil, ctxDebug, segments)
 			}
 		} else {
 			ctl.noteTextTurn(conv.ID)
-			ctl.hub.SendCompleteWithDebug(userID, conv.ID, aiResponse, "text", "", 0, 0, nil, ctxDebug)
+			ctl.hub.SendCompleteWithDebug(userID, conv.ID, aiResponse, "text", "", 0, 0, nil, ctxDebug, segments)
 		}
 
 		ctl.msgWriter.EnqueueAsync(userMessage, aiMessage)
