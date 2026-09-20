@@ -304,17 +304,44 @@ func (ctl *ChatController) maybeSendImage(userID int64, client *service.Client, 
 		log.Printf("[image] not triggered by skills user=%d persona=%d src=%s msg=%q", userID, pid, src, userMsg)
 		return
 	}
-	window := time.Duration(cfg.ImageGenLimitWindowMin) * time.Minute
-	if window <= 0 {
-		window = 30 * time.Minute
-	}
-	ok, hits := ctl.imageGen.AllowImage(userID, cfg.ImageGenLimitMax, window)
-	if !ok {
-		log.Printf("[image] rate limit user=%d hits=%d/%d", userID, hits, cfg.ImageGenLimitMax)
-		return
+	// 限流：max/window <=0 表示暂时关闭（当前默认关闭 30 分钟窗）
+	hits := 0
+	limitEnabled := cfg.ImageGenLimitMax > 0 && cfg.ImageGenLimitWindowMin > 0
+	if limitEnabled {
+		window := time.Duration(cfg.ImageGenLimitWindowMin) * time.Minute
+		ok, h := ctl.imageGen.AllowImage(userID, cfg.ImageGenLimitMax, window)
+		hits = h
+		if !ok {
+			log.Printf("[image] rate limit user=%d hits=%d/%d", userID, hits, cfg.ImageGenLimitMax)
+			return
+		}
 	}
 
-	imgURL, dbg, err := ctl.imageGen.Generate(userID, pid, aiReply, emotion, tags)
+	// 先取 LLM 场景提示词 + 等待句（失败回退 skills-only + 固定短句）
+	llmResult := ctl.imageGen.MaybeLLMPromptWithPersona(userMsg, aiReply, emotion, pid)
+	waitPhrase := service.WaitPhraseFromLLM(llmResult)
+
+	earlyDbg := &service.ImageGenDebug{
+		Enabled:    true,
+		Triggered:  true,
+		TriggerSrc: src,
+		MaxPerWin:  cfg.ImageGenLimitMax,
+		HitsInWin:  hits,
+		Model:      cfg.ImageGenModel,
+		APIBase:    cfg.GRSAIAPIBase,
+		Status:     "generating",
+	}
+	if llmResult != nil {
+		earlyDbg.LLMPrompt = llmResult.Prompt
+		earlyDbg.LLMCaption = llmResult.Caption
+		earlyDbg.LLMScene = llmResult.SceneType
+		earlyDbg.LLMHasPerson = llmResult.HasPerson
+	}
+	ctl.hub.SendImageGenerating(userID, convID, waitPhrase, earlyDbg)
+	log.Printf("[image] generating start user=%d src=%s limit=%v phrase=%q scene=%s",
+		userID, src, limitEnabled, waitPhrase, earlyDbg.LLMScene)
+
+	imgURL, dbg, err := ctl.imageGen.Generate(userID, pid, userMsg, aiReply, emotion, tags, llmResult)
 	if err != nil || imgURL == "" {
 		log.Printf("[image] generate failed user=%d: %v dbg=%+v", userID, err, dbg)
 		return
@@ -344,6 +371,10 @@ func (ctl *ChatController) maybeSendImage(userID int64, client *service.Client, 
 	ctl.msgWriter.EnqueueAsync(imgMsg)
 	log.Printf("[image] sent user=%d conv=%d src=%s url=%s model=%s ref=%v appear=%v",
 		userID, convID, src, abs, dbg.Model, dbg.HasRefImage, dbg.Appearance != "")
+}
+
+func pickImageWaitPhrase() string {
+	return service.WaitPhraseFromLLM(nil)
 }
 
 func (ctl *ChatController) noteTextTurn(convID int64) {

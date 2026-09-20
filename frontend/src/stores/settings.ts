@@ -12,8 +12,10 @@ export interface HumanizeSettings {
   replyDelayMaxMs: number
   /** 多段回复按节奏逐段上屏（参照拟人输入节奏） */
   segmentRevealEnabled: boolean
-  /** 段与段之间的间隔 ms */
-  segmentRevealDelayMs: number
+  /** 段与段之间随机间隔的下限 ms */
+  segmentRevealMinMs: number
+  /** 段与段之间随机间隔的上限 ms */
+  segmentRevealMaxMs: number
   /** 清空聊天时是否默认保留记忆卡（可被会话配置覆盖） */
   defaultKeepMemoryOnClear: boolean
   /** AI 回复后自动 TTS 播放 */
@@ -26,7 +28,7 @@ interface SettingsState extends HumanizeSettings {
   setReplyDelayEnabled: (v: boolean) => void
   setReplyDelayRange: (min: number, max: number) => void
   setSegmentRevealEnabled: (v: boolean) => void
-  setSegmentRevealDelayMs: (ms: number) => void
+  setSegmentRevealRange: (min: number, max: number) => void
   setDefaultKeepMemoryOnClear: (v: boolean) => void
   setVoiceAutoPlay: (v: boolean) => void
   resetHumanize: () => void
@@ -41,7 +43,9 @@ const defaults: HumanizeSettings = {
   replyDelayMinMs: 400,
   replyDelayMaxMs: 1600,
   segmentRevealEnabled: true,
-  segmentRevealDelayMs: 700,
+  // 默认 3–5s 随机：固定短间隔会显得像机器刷屏
+  segmentRevealMinMs: 3000,
+  segmentRevealMaxMs: 5000,
   defaultKeepMemoryOnClear: false,
   voiceAutoPlay: false,
 }
@@ -50,7 +54,17 @@ function load(): HumanizeSettings {
   try {
     const raw = localStorage.getItem(KEY)
     if (!raw) return { ...defaults }
-    const parsed = JSON.parse(raw) as Partial<HumanizeSettings>
+    const parsed = JSON.parse(raw) as Partial<HumanizeSettings> & {
+      segmentRevealDelayMs?: number
+    }
+    // 旧字段固定间隔 → 升级为 3–5s 随机（旧值过短时强制抬高）
+    const legacy = parsed.segmentRevealDelayMs
+    const min =
+      parsed.segmentRevealMinMs ??
+      (legacy != null && legacy >= 2000 ? legacy : defaults.segmentRevealMinMs)
+    const max =
+      parsed.segmentRevealMaxMs ??
+      (legacy != null && legacy >= 3000 ? Math.max(legacy + 1000, 5000) : defaults.segmentRevealMaxMs)
     return {
       typingEnabled: parsed.typingEnabled ?? defaults.typingEnabled,
       typingCharDelayMs: clampMs(parsed.typingCharDelayMs ?? defaults.typingCharDelayMs),
@@ -58,7 +72,8 @@ function load(): HumanizeSettings {
       replyDelayMinMs: clampMs(parsed.replyDelayMinMs ?? defaults.replyDelayMinMs, 0, 8000),
       replyDelayMaxMs: clampMs(parsed.replyDelayMaxMs ?? defaults.replyDelayMaxMs, 0, 8000),
       segmentRevealEnabled: parsed.segmentRevealEnabled ?? defaults.segmentRevealEnabled,
-      segmentRevealDelayMs: clampMs(parsed.segmentRevealDelayMs ?? defaults.segmentRevealDelayMs, 200, 3000),
+      segmentRevealMinMs: clampMs(min, 1000, 8000),
+      segmentRevealMaxMs: clampMs(Math.max(max, min), 1000, 8000),
       defaultKeepMemoryOnClear: parsed.defaultKeepMemoryOnClear ?? defaults.defaultKeepMemoryOnClear,
       voiceAutoPlay: parsed.voiceAutoPlay ?? defaults.voiceAutoPlay,
     }
@@ -92,6 +107,13 @@ export function randomReplyDelayMs(s: HumanizeSettings): number {
   return min + Math.floor(Math.random() * (max - min + 1))
 }
 
+/** 分段上屏：段与段之间随机等待（默认 3–5s） */
+export function randomSegmentRevealGapMs(s: HumanizeSettings): number {
+  const min = Math.max(1000, s.segmentRevealMinMs || 3000)
+  const max = Math.max(min, s.segmentRevealMaxMs || 5000)
+  return min + Math.floor(Math.random() * (max - min + 1))
+}
+
 export const useSettingsStore = create<SettingsState>((set) => ({
   ...load(),
 
@@ -118,10 +140,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     persist({ segmentRevealEnabled: v })
     set({ segmentRevealEnabled: v })
   },
-  setSegmentRevealDelayMs: (ms) => {
-    const v = clampMs(ms, 200, 3000)
-    persist({ segmentRevealDelayMs: v })
-    set({ segmentRevealDelayMs: v })
+  setSegmentRevealRange: (min, max) => {
+    const lo = clampMs(min, 1000, 8000)
+    const hi = clampMs(Math.max(max, lo), 1000, 8000)
+    persist({ segmentRevealMinMs: lo, segmentRevealMaxMs: hi })
+    set({ segmentRevealMinMs: lo, segmentRevealMaxMs: hi })
   },
   setDefaultKeepMemoryOnClear: (v) => {
     persist({ defaultKeepMemoryOnClear: v })

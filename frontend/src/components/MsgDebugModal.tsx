@@ -1,17 +1,18 @@
 import { useState } from 'react'
-import type { ContextDebugInfo, TTSDebugInfo } from '../stores/chat'
+import type { ContextDebugInfo, ImageGenDebugInfo, TTSDebugInfo } from '../stores/chat'
 import type { ReplySegment } from '../types/api'
 import { splitReplySegments } from '../utils/segments'
 
-type Tab = 'llm' | 'ctx' | 'tts'
+type Tab = 'llm' | 'img' | 'ctx' | 'tts'
 
-/** 单条消息 Debug 弹窗：LLM / 上下文 / TTS / 分段 */
+/** 单条消息 Debug 弹窗：LLM / 图片生成 / 上下文 / TTS / 分段 */
 export function MsgDebugModal({
   open,
   onClose,
   llmText,
   ttsDebug,
   contextDebug,
+  imageDebug,
   segments,
   title,
 }: {
@@ -20,6 +21,8 @@ export function MsgDebugModal({
   llmText: string
   ttsDebug?: TTSDebugInfo | null
   contextDebug?: ContextDebugInfo | null
+  /** 图片生成 debug（真正发给 image API 的 prompt 等） */
+  imageDebug?: ImageGenDebugInfo | null
   /** 完整回复的显式小段；缺省时按 LLM 文本本地切分 */
   segments?: ReplySegment[] | null
   title?: string
@@ -32,12 +35,16 @@ export function MsgDebugModal({
 
   const tabs: { key: Tab; label: string; disabled?: boolean }[] = [
     { key: 'llm', label: 'LLM' },
+    { key: 'img', label: '图片', disabled: !imageDebug },
     { key: 'ctx', label: '上下文', disabled: !contextDebug },
     { key: 'tts', label: 'TTS', disabled: !ttsDebug },
   ]
   let active = tab
-  if (active === 'ctx' && !contextDebug) active = 'llm'
-  if (active === 'tts' && !ttsDebug) active = 'llm'
+  if (active === 'img' && !imageDebug) active = 'llm'
+  if (active === 'ctx' && !contextDebug) active = imageDebug ? 'img' : 'llm'
+  if (active === 'tts' && !ttsDebug) active = imageDebug ? 'img' : 'llm'
+  // 图片消息打开时优先进图片 Tab（用户主要关心 prompt）
+  if (tab === 'llm' && imageDebug && !llmText) active = 'img'
 
   return (
     <div
@@ -121,6 +128,94 @@ export function MsgDebugModal({
               <pre className="text-xs bg-gray-900 text-gray-100 rounded-xl px-3 py-3 whitespace-pre-wrap break-words max-h-[40vh] overflow-y-auto">
                 {llmText || '（无）'}
               </pre>
+            </div>
+          )}
+
+          {active === 'img' && imageDebug && (
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-1.5">
+                <span className="text-[11px] px-2 py-1 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
+                  {imageDebug.model || '—'}
+                </span>
+                <span className="text-[11px] px-2 py-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                  prompt_src {imageDebug.prompt_src || '—'}
+                </span>
+                {imageDebug.llm_scene && (
+                  <span className="text-[11px] px-2 py-1 rounded-full bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-200">
+                    scene {imageDebug.llm_scene}
+                    {imageDebug.llm_has_person != null
+                      ? imageDebug.llm_has_person
+                        ? ' · 有人'
+                        : ' · 无人'
+                      : ''}
+                  </span>
+                )}
+                <span className="text-[11px] px-2 py-1 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                  触发 {imageDebug.trigger_src || '—'}
+                </span>
+                <span className="text-[11px] px-2 py-1 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                  {imageDebug.status || '—'}
+                  {imageDebug.latency_ms ? ` · ${imageDebug.latency_ms}ms` : ''}
+                </span>
+                <span className="text-[11px] px-2 py-1 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                  {imageDebug.aspect || '—'} · {imageDebug.quality || '—'}
+                  {imageDebug.has_ref_image ? ' · 有参考图' : ''}
+                </span>
+                {imageDebug.hits_in_win != null && imageDebug.max_per_win != null && (
+                  <span className="text-[11px] px-2 py-1 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                    限流 {imageDebug.hits_in_win}/{imageDebug.max_per_win || 0}
+                  </span>
+                )}
+              </div>
+              <div className="text-[11px] text-gray-400">
+                api：{imageDebug.api_base || '—'}
+                <br />
+                task：{imageDebug.task_id || '—'}
+                <br />
+                image：{imageDebug.image_url || imageDebug.remote_url || '—'}
+              </div>
+              {imageDebug.appearance && (
+                <div>
+                  <div className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    外貌（技能包 appearance）
+                  </div>
+                  <pre className="text-[11px] bg-gray-50 dark:bg-gray-900/40 rounded-lg px-2 py-1.5 whitespace-pre-wrap break-words">
+                    {imageDebug.appearance}
+                  </pre>
+                </div>
+              )}
+              {imageDebug.image_style && (
+                <div>
+                  <div className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    画面风格（image_style）
+                  </div>
+                  <pre className="text-[11px] bg-gray-50 dark:bg-gray-900/40 rounded-lg px-2 py-1.5 whitespace-pre-wrap break-words">
+                    {imageDebug.image_style}
+                  </pre>
+                </div>
+              )}
+              {imageDebug.llm_prompt && (
+                <div>
+                  <div className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    LLM 场景描述（与 Skills 组合前）
+                  </div>
+                  <pre className="text-[11px] bg-sky-50 dark:bg-sky-900/20 rounded-lg px-2 py-1.5 whitespace-pre-wrap break-words">
+                    {imageDebug.llm_prompt}
+                    {imageDebug.llm_caption ? `\n— 等待句：${imageDebug.llm_caption}` : ''}
+                  </pre>
+                </div>
+              )}
+              <div>
+                <div className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  发给 Image API 的 Prompt
+                </div>
+                <pre className="text-xs bg-orange-50 dark:bg-orange-900/20 text-gray-800 dark:text-gray-100 rounded-xl px-3 py-2 whitespace-pre-wrap break-words max-h-[40vh] overflow-y-auto">
+                  {imageDebug.prompt || '（无）'}
+                </pre>
+              </div>
+              {imageDebug.error && (
+                <p className="text-[11px] text-red-400">{imageDebug.error}</p>
+              )}
             </div>
           )}
 

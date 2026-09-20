@@ -78,7 +78,10 @@ type Config struct {
 	ImageGenQuality       string
 	ImageGenReplyType     string
 	ImageGenStylePrompt   string
-	ImageGenLimitMax      int
+	// ImageGenLLMPrompt 是否用 LLM 生成场景向提示词（与 skills 组合）
+	ImageGenLLMPrompt bool
+	// 限流：Max<=0 或 WindowMin<=0 表示关闭（当前默认关闭 30 分钟窗）
+	ImageGenLimitMax       int
 	ImageGenLimitWindowMin int
 }
 
@@ -179,8 +182,10 @@ func LoadConfig() *Config {
 		ImageGenReplyType: getEnv("IMAGE_GEN_REPLY_TYPE", "json"),
 		ImageGenStylePrompt: getEnv("IMAGE_GEN_STYLE_PROMPT",
 			"手机自拍风格，真实生活感，自然光线，像恋人从相册发给你的照片，轻微生活场景，构图自然"),
-		ImageGenLimitMax:       getEnvAsInt("IMAGE_GEN_LIMIT_MAX", 2),
-		ImageGenLimitWindowMin: getEnvAsInt("IMAGE_GEN_LIMIT_WINDOW_MIN", 30),
+		ImageGenLLMPrompt:      getEnv("IMAGE_GEN_LLM_PROMPT", "true") == "true",
+		// 默认 0：30 分钟出图限流暂时关闭；恢复时设 IMAGE_GEN_LIMIT_MAX=2 IMAGE_GEN_LIMIT_WINDOW_MIN=30
+		ImageGenLimitMax:       getEnvAsInt("IMAGE_GEN_LIMIT_MAX", 0),
+		ImageGenLimitWindowMin: getEnvAsInt("IMAGE_GEN_LIMIT_WINDOW_MIN", 0),
 	}
 
 	for _, dir := range []string{

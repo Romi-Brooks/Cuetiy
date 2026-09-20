@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -31,18 +32,25 @@ type ImageGenDebug struct {
 	Model       string `json:"model"`
 	APIBase     string `json:"api_base"`
 	Prompt      string `json:"prompt"`
-	Aspect      string `json:"aspect"`
-	Quality     string `json:"quality"`
-	HasRefImage bool   `json:"has_ref_image"`
-	TaskID      string `json:"task_id"`
-	Status      string `json:"status"`
-	ImageURL    string `json:"image_url"`
-	LocalPath   string `json:"local_path"`
-	RemoteURL   string `json:"remote_url"`
-	LatencyMs   int64  `json:"latency_ms"`
-	HitsInWin   int    `json:"hits_in_window"`
-	MaxPerWin   int    `json:"max_per_window"`
-	Error       string `json:"error,omitempty"`
+	// PromptSrc: skills | skills+llm | skills_fallback | override | override+llm
+	PromptSrc string `json:"prompt_src"`
+	// LLM 场景向产物（debug）
+	LLMPrompt    string `json:"llm_prompt"`
+	LLMCaption   string `json:"llm_caption"`
+	LLMScene     string `json:"llm_scene"`
+	LLMHasPerson bool   `json:"llm_has_person"`
+	Aspect       string `json:"aspect"`
+	Quality      string `json:"quality"`
+	HasRefImage  bool   `json:"has_ref_image"`
+	TaskID       string `json:"task_id"`
+	Status       string `json:"status"`
+	ImageURL     string `json:"image_url"`
+	LocalPath    string `json:"local_path"`
+	RemoteURL    string `json:"remote_url"`
+	LatencyMs    int64  `json:"latency_ms"`
+	HitsInWin    int    `json:"hits_in_window"`
+	MaxPerWin    int    `json:"max_per_window"`
+	Error        string `json:"error,omitempty"`
 }
 
 type ImageRefSource interface {
@@ -51,13 +59,14 @@ type ImageRefSource interface {
 
 type RegistrySource func(personaID int64) *skill.SkillRegistry
 
-// ImageGenService 调用 Grsai gpt-image-2.5；触发/外貌由技能包驱动 + 限流 + 可选参考图
+// ImageGenService 调用 Grsai gpt-image-2.5；提示词 = Skills 约束 + LLM 场景
 type ImageGenService struct {
-	storage     FileStorage
-	refRepo     ImageRefSource
-	regSource   RegistrySource
-	mu          sync.Mutex
-	hits        map[int64][]time.Time
+	storage   FileStorage
+	refRepo   ImageRefSource
+	regSource RegistrySource
+	ai        *AIService
+	mu        sync.Mutex
+	hits      map[int64][]time.Time
 }
 
 func NewImageGenService(storage FileStorage, refRepo ImageRefSource) *ImageGenService {
@@ -72,6 +81,13 @@ func NewImageGenService(storage FileStorage, refRepo ImageRefSource) *ImageGenSe
 func (s *ImageGenService) BindRegistry(src RegistrySource) {
 	if s != nil {
 		s.regSource = src
+	}
+}
+
+// BindAI 绑定 AIService：Skills+LLM 组合提示词 / LLM 等待句
+func (s *ImageGenService) BindAI(ai *AIService) {
+	if s != nil {
+		s.ai = ai
 	}
 }
 
@@ -97,10 +113,11 @@ func (s *ImageGenService) ShouldTrigger(userMsg string, personaID int64, emotion
 	return false, "none"
 }
 
-// AllowImage 发图限流：窗口内最多 max 次
+// AllowImage 发图限流：窗口内最多 max 次。max<=0 时视为不限流（由调用方判断）
 func (s *ImageGenService) AllowImage(userID int64, max int, window time.Duration) (ok bool, hits int) {
 	if max <= 0 {
-		max = 2
+		// 不限流：直接放行，不记账
+		return true, 0
 	}
 	if window <= 0 {
 		window = 30 * time.Minute
@@ -124,18 +141,81 @@ func (s *ImageGenService) AllowImage(userID int64, max int, window time.Duration
 	return true, len(s.hits[userID])
 }
 
-// BuildImagePrompt 组装 TTI prompt：
-// 1) 技能包 image_prompt 覆盖 → 2) appearance + image_style（技能包） + 情绪微调 + 回复意境
-// 引擎只保留通用连接词与情绪修饰，不写死具体人设外貌。
+// BuildImagePrompt 组装 TTI prompt（无 LLM 时的 skills-only 路径）
 func BuildImagePrompt(aiReply, emotion, style, appearance string) string {
 	return BuildImagePromptWithReg(aiReply, emotion, style, appearance, nil)
 }
 
-// BuildImagePromptWithReg 优先使用技能包 appearance / image_style / image_prompt
+// ComposeImagePrompt Skills + LLM 组合：
+// - Skills：appearance / image_style / image_prompt 覆盖（身份与风格硬约束）
+// - LLM：场景向 prompt（风景/街拍/美食等，不限于自拍）+ caption
+// 最终 = [skills appearance（有人时）] + [llm.prompt 或 skills style] + 情绪 + 免水印
+func ComposeImagePrompt(aiReply, emotion string, reg *skill.SkillRegistry, llm *ImagePromptLLM) (prompt, src string) {
+	appearance := ""
+	style := ""
+	override := ""
+	if reg != nil {
+		appearance = strings.TrimSpace(reg.ImageAppearanceFromSkills())
+		style = strings.TrimSpace(reg.ImageStyleFromSkills())
+		override = strings.TrimSpace(reg.ImagePromptOverride())
+	}
+
+	// 人物是否入画：LLM 说了算；无 LLM 时有 appearance 则默认有人
+	hasPerson := appearance != ""
+	if llm != nil {
+		hasPerson = llm.HasPerson
+	}
+
+	var b strings.Builder
+
+	// 1) 外貌：技能包硬约束，LLM 不得改写
+	if hasPerson && appearance != "" {
+		b.WriteString("人物外貌：" + appearance + "。")
+	}
+
+	// 2) 场景主体
+	switch {
+	case llm != nil && llm.Prompt != "" && override != "":
+		// 技能包整段覆盖仍保留，LLM 场景附在后面丰富细节
+		b.WriteString(strings.TrimSpace(override))
+		b.WriteString("。")
+		b.WriteString(strings.TrimSpace(llm.Prompt))
+		src = "override+llm"
+	case llm != nil && llm.Prompt != "":
+		b.WriteString(strings.TrimSpace(llm.Prompt))
+		src = "skills+llm"
+	case override != "":
+		b.WriteString(override)
+		if emotionPart := emotionMoodSuffix(emotion); emotionPart != "" {
+			b.WriteString(emotionPart)
+		}
+		return strings.TrimSpace(b.String()), "override"
+	case style != "":
+		b.WriteString(style)
+		src = "skills"
+	default:
+		b.WriteString("手机拍摄感照片，自然光线，生活场景")
+		src = "skills_fallback"
+	}
+
+	if src != "override" {
+		b.WriteString(emotionMoodSuffix(emotion))
+		snip := strings.TrimSpace(aiReply)
+		if r := []rune(snip); len(r) > 40 {
+			snip = string(r[:40])
+		}
+		if snip != "" {
+			b.WriteString("。配图文案意境：" + snip)
+		}
+	}
+	b.WriteString("。不要在画面中出现文字水印。")
+	return b.String(), src
+}
+
+// BuildImagePromptWithReg 无 LLM 时：优先技能包 appearance / image_style / image_prompt
 func BuildImagePromptWithReg(aiReply, emotion, envStyle, envAppearance string, reg *skill.SkillRegistry) string {
 	if reg != nil {
 		if over := reg.ImagePromptOverride(); over != "" {
-			// 覆盖式仍可附上情绪一句，避免完全僵硬
 			emotionPart := emotionMoodSuffix(emotion)
 			if emotionPart != "" {
 				return strings.TrimSpace(over) + emotionPart
@@ -154,7 +234,6 @@ func BuildImagePromptWithReg(aiReply, emotion, envStyle, envAppearance string, r
 		}
 	}
 	if style == "" {
-		// 仅中性兜底，不含具体长相
 		style = "手机拍摄感照片，自然光线，生活场景，画面无文字水印"
 	}
 	var b strings.Builder
@@ -172,6 +251,56 @@ func BuildImagePromptWithReg(aiReply, emotion, envStyle, envAppearance string, r
 	}
 	b.WriteString("。不要在画面中出现文字水印。")
 	return b.String()
+}
+
+// MaybeLLMPrompt 按配置决定是否调用 LLM 生成场景向提示词
+func (s *ImageGenService) MaybeLLMPrompt(userMsg, aiReply, emotion string, reg *skill.SkillRegistry) *ImagePromptLLM {
+	if s == nil || s.ai == nil {
+		return nil
+	}
+	cfg := config.AppConfig
+	if cfg == nil || !cfg.ImageGenLLMPrompt {
+		return nil
+	}
+	appearance, style := "", ""
+	if reg != nil {
+		appearance = reg.ImageAppearanceFromSkills()
+		style = reg.ImageStyleFromSkills()
+	}
+	llm, err := s.ai.GenerateImagePromptLLM(userMsg, aiReply, emotion, appearance, style)
+	if err != nil {
+		log.Printf("[image] llm prompt failed, fallback skills-only: %v", err)
+		return nil
+	}
+	return llm
+}
+
+// MaybeLLMPromptWithPersona 按人格取 registry 后生成 LLM 提示词
+func (s *ImageGenService) MaybeLLMPromptWithPersona(userMsg, aiReply, emotion string, personaID int64) *ImagePromptLLM {
+	if s == nil {
+		return nil
+	}
+	return s.MaybeLLMPrompt(userMsg, aiReply, emotion, s.registryFor(personaID))
+}
+
+// WaitPhraseFromLLM 优先 LLM caption，否则固定短句
+func WaitPhraseFromLLM(llm *ImagePromptLLM) string {
+	if llm != nil {
+		if c := strings.TrimSpace(llm.Caption); c != "" {
+			return c
+		}
+	}
+	phrases := []string{
+		"等我一下哦～",
+		"马上给你看～",
+		"稍等，我拍一下～",
+		"好呀，你等等我～",
+		"这就来，稍等一下～",
+	}
+	if len(phrases) == 0 {
+		return "等我一下～"
+	}
+	return phrases[time.Now().UnixNano()%int64(len(phrases))]
 }
 
 func emotionMoodSuffix(emotion string) string {
@@ -244,10 +373,11 @@ func (s *ImageGenService) loadRefBase64(userID int64) (dataURL string, ok bool) 
 }
 
 // Generate 生成一张形象图并落到本地存储；返回可外链 URL
-func (s *ImageGenService) Generate(userID, personaID int64, aiReply, emotion string, emotionTags []string) (url string, dbg *ImageGenDebug, err error) {
+// prompt = Skills（appearance/style/override）+ LLM 场景（可关）；llm 可预生成避免二次调用
+func (s *ImageGenService) Generate(userID, personaID int64, userMsg, aiReply, emotion string, emotionTags []string, llm *ImagePromptLLM) (url string, dbg *ImageGenDebug, err error) {
 	start := time.Now()
 	cfg := config.AppConfig
-	dbg = &ImageGenDebug{MaxPerWin: 2}
+	dbg = &ImageGenDebug{MaxPerWin: 0}
 	if cfg == nil {
 		dbg.Error = "config nil"
 		return "", dbg, fmt.Errorf("config nil")
@@ -269,15 +399,36 @@ func (s *ImageGenService) Generate(userID, personaID int64, aiReply, emotion str
 	if reg != nil {
 		dbg.Appearance = reg.ImageAppearanceFromSkills()
 		dbg.ImageStyle = reg.ImageStyleFromSkills()
-		if reg.ShouldTriggerImage("") {
-			// no-op
-		}
 	}
 
 	refURL, hasRef := s.loadRefBase64(userID)
 	dbg.HasRefImage = hasRef
-	prompt := BuildImagePromptWithReg(aiReply, emotion, cfg.ImageGenStylePrompt, "", reg)
+
+	// Skills + LLM 组合提示词（外部已生成则复用，避免两次 LLM）
+	if llm == nil {
+		llm = s.MaybeLLMPrompt(userMsg, aiReply, emotion, reg)
+	}
+	if llm != nil {
+		dbg.LLMPrompt = llm.Prompt
+		dbg.LLMCaption = llm.Caption
+		dbg.LLMScene = llm.SceneType
+		dbg.LLMHasPerson = llm.HasPerson
+	}
+	prompt, promptSrc := ComposeImagePrompt(aiReply, emotion, reg, llm)
+	// 无技能包 style 且无 LLM 时，用 env 兜底风格
+	if promptSrc == "skills_fallback" && strings.TrimSpace(cfg.ImageGenStylePrompt) != "" {
+		prompt, _ = ComposeImagePrompt(aiReply, emotion, reg, nil)
+		// env style 注入
+		if !strings.Contains(prompt, cfg.ImageGenStylePrompt) {
+			prompt = strings.Replace(prompt, "手机拍摄感照片，自然光线，生活场景", cfg.ImageGenStylePrompt, 1)
+			if !strings.Contains(prompt, cfg.ImageGenStylePrompt) {
+				prompt = cfg.ImageGenStylePrompt + "。" + prompt
+			}
+		}
+		promptSrc = "skills_env"
+	}
 	dbg.Prompt = prompt
+	dbg.PromptSrc = promptSrc
 	dbg.Aspect = cfg.ImageGenAspect
 	dbg.Quality = cfg.ImageGenQuality
 

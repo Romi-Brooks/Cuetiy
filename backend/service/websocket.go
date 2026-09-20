@@ -176,6 +176,16 @@ func (h *WebSocketHub) SendContextDebug(userID int64, conversationID int64, debu
 	})
 }
 
+// SendImageGenerating 出图任务已触发（尚未返回图）：先推一句等待 + 可选 debug
+func (h *WebSocketHub) SendImageGenerating(userID, conversationID int64, phrase string, debug interface{}) {
+	h.SendToUser(userID, wsMessage{
+		Type:           "image_generating",
+		Content:        phrase,
+		ConversationID: conversationID,
+		ImageDebug:     debug,
+	})
+}
+
 // SendImageMessage 文字 complete 之后追加一张 AI 图片（先一句话再发图）
 func (h *WebSocketHub) SendImageMessage(userID, conversationID, messageID int64, caption, imageURL string, debug interface{}) {
 	h.SendToUser(userID, wsMessage{

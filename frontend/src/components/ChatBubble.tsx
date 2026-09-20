@@ -3,7 +3,7 @@ import type { Message } from '../types/api'
 import { formatTime } from '../utils'
 import { resolveAssetUrl } from '../utils/url'
 import { splitReplySegments, type ReplySegment } from '../utils/segments'
-import { loadHumanizeSettings } from '../stores/settings'
+import { loadHumanizeSettings, randomSegmentRevealGapMs } from '../stores/settings'
 import {
   extractEmotionalActions,
   stripEmotionalForDisplay,
@@ -81,7 +81,7 @@ export function ChatBubble({
     return { segments: mapped, actions: acts }
   }, [content, isAI, actionsEnabled, message?.segments])
 
-  // 分段延时上屏：历史消息与关闭拟人时直接全量
+  // 分段延时上屏：历史消息与关闭拟人时直接全量；开启时段间随机 3–5s（可调）
   const [visibleCount, setVisibleCount] = useState(segments.length)
   useEffect(() => {
     const hs = loadHumanizeSettings()
@@ -90,14 +90,24 @@ export function ChatBubble({
       return
     }
     setVisibleCount(1)
+    let cancelled = false
     let shown = 1
-    const gap = Math.max(200, hs.segmentRevealDelayMs || 700)
-    const timer = setInterval(() => {
-      shown += 1
-      setVisibleCount(shown)
-      if (shown >= segments.length) clearInterval(timer)
-    }, gap)
-    return () => clearInterval(timer)
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const schedule = () => {
+      if (cancelled || shown >= segments.length) return
+      const gap = randomSegmentRevealGapMs(hs)
+      timer = setTimeout(() => {
+        if (cancelled) return
+        shown += 1
+        setVisibleCount(shown)
+        schedule()
+      }, gap)
+    }
+    schedule()
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
   }, [isAI, animateSegments, segments.length, message?.id])
 
   useEffect(() => {

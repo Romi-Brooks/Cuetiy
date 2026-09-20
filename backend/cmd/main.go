@@ -61,8 +61,9 @@ func main() {
 	ttsService := service.NewTTSService(fileStorage, voiceRepo)
 	imageRefRepo := repository.NewImageRefRepo()
 	imageGenService := service.NewImageGenService(fileStorage, imageRefRepo)
-	// 出图触发/外貌由技能包 registry 驱动
+	// 出图触发/外貌由技能包 registry 驱动；提示词/等待句由 Skills+LLM 组合
 	imageGenService.BindRegistry(skillManager.GetSkillRegistry)
+	imageGenService.BindAI(aiService)
 	asrService := service.NewASRService()
 
 	exportSvc := service.NewExportService(convRepo, msgRepo, ctxRepo, personaRepo)

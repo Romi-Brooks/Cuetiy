@@ -135,9 +135,10 @@ export function MainChat() {
   const setReplyDelayEnabled = useSettingsStore((s) => s.setReplyDelayEnabled)
   const setReplyDelayRange = useSettingsStore((s) => s.setReplyDelayRange)
   const segmentRevealEnabled = useSettingsStore((s) => s.segmentRevealEnabled)
-  const segmentRevealDelayMs = useSettingsStore((s) => s.segmentRevealDelayMs)
+  const segmentRevealMinMs = useSettingsStore((s) => s.segmentRevealMinMs)
+  const segmentRevealMaxMs = useSettingsStore((s) => s.segmentRevealMaxMs)
   const setSegmentRevealEnabled = useSettingsStore((s) => s.setSegmentRevealEnabled)
-  const setSegmentRevealDelayMs = useSettingsStore((s) => s.setSegmentRevealDelayMs)
+  const setSegmentRevealRange = useSettingsStore((s) => s.setSegmentRevealRange)
   const defaultKeepMemoryOnClear = useSettingsStore((s) => s.defaultKeepMemoryOnClear)
   const setDefaultKeepMemoryOnClear = useSettingsStore((s) => s.setDefaultKeepMemoryOnClear)
   const [wantVoice, setWantVoice] = useState(false)
@@ -402,6 +403,16 @@ export function MainChat() {
       if (debugExpandedMsgId === msgId && msgDebugOpen) {
         setMsgDebugOpen(false)
         setDebugExpandedMsgId(null)
+        return
+      }
+
+      // 图片消息：优先展示 Image API prompt，不必再塞整段 system
+      const imgDbg = chat.msgImageDebug[msgId] || null
+      const targetMsg = chat.messages.find((x) => x.id === msgId)
+      if (imgDbg && targetMsg?.message_type === 'image') {
+        setDebugMsgContent(targetMsg.content || '')
+        setDebugExpandedMsgId(msgId)
+        setMsgDebugOpen(true)
         return
       }
 
@@ -838,14 +849,28 @@ export function MainChat() {
                     <div key={msg.id ?? idx}>
                       {shouldShowTimestamp(chat.messages, idx) && <TimeStamp time={msg.created_at} />}
                       {msg.message_type === 'image' && (msg.image_url || msg.attachment_url) ? (
-                        <ChatBubble
-                          message={msg}
-                          isAI
-                          aiNickname={aiNickname}
-                          aiAvatar={aiAvatar}
-                          userNickname={username}
-                          userAvatar={userAvatar}
-                        />
+                        <div>
+                          <ChatBubble
+                            message={msg}
+                            isAI
+                            aiNickname={aiNickname}
+                            aiAvatar={aiAvatar}
+                            userNickname={username}
+                            userAvatar={userAvatar}
+                          />
+                          {msg.role === 'assistant' && (
+                            <div className="flex justify-start pl-14 -mt-2 mb-3">
+                              <button
+                                className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-pointer transition-colors"
+                                onClick={() => toggleMsgDebug(msg.id, idx)}
+                              >
+                                {msgDebugOpen && debugExpandedMsgId === msg.id
+                                  ? '收起 Debug'
+                                  : 'Debug'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       ) : msg.message_type === 'voice' && msg.audio_url ? (
                         <div
                           className={`flex items-start gap-3 mb-2 ${
@@ -881,7 +906,7 @@ export function MainChat() {
                             animateSegments={
                               msg.role === 'assistant' &&
                               idx === chat.messages.length - 1 &&
-                              typingEnabled
+                              segmentRevealEnabled
                             }
                           />
                           {msg.role === 'assistant' && (
@@ -1321,22 +1346,46 @@ export function MainChat() {
                     </button>
                   </div>
                   {segmentRevealEnabled && (
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                        <span>段间隔</span>
+                        <span>段间隔（随机）</span>
                         <span className="font-medium text-gray-700 dark:text-gray-200">
-                          {segmentRevealDelayMs} ms
+                          {segmentRevealMinMs}–{segmentRevealMaxMs} ms
                         </span>
                       </div>
-                      <input
-                        type="range"
-                        min={200}
-                        max={3000}
-                        step={50}
-                        value={segmentRevealDelayMs}
-                        onChange={(e) => setSegmentRevealDelayMs(Number(e.target.value))}
-                        className="w-full accent-emerald-500"
-                      />
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="w-6 text-[10px] text-gray-400">最短</span>
+                          <input
+                            type="range"
+                            min={1000}
+                            max={8000}
+                            step={100}
+                            value={segmentRevealMinMs}
+                            onChange={(e) =>
+                              setSegmentRevealRange(Number(e.target.value), segmentRevealMaxMs)
+                            }
+                            className="flex-1 accent-emerald-500"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="w-6 text-[10px] text-gray-400">最长</span>
+                          <input
+                            type="range"
+                            min={1000}
+                            max={8000}
+                            step={100}
+                            value={segmentRevealMaxMs}
+                            onChange={(e) =>
+                              setSegmentRevealRange(segmentRevealMinMs, Number(e.target.value))
+                            }
+                            className="flex-1 accent-emerald-500"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-gray-400">
+                        每段之间在范围内随机取值；默认 3–5 秒，更接近真人打字节奏
+                      </p>
                     </div>
                   )}
                   <div className="flex items-center justify-between">
@@ -1673,6 +1722,9 @@ export function MainChat() {
           const byUrl = m?.audio_url ? chat.ttsDebugByUrl[m.audio_url] : null
           return byId || byUrl || null
         })()}
+        imageDebug={
+          debugExpandedMsgId != null ? chat.msgImageDebug[debugExpandedMsgId] || null : null
+        }
         contextDebug={
           debugExpandedMsgId != null ? chat.msgCtxDebug[debugExpandedMsgId] || null : null
         }

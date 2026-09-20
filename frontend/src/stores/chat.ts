@@ -39,6 +39,38 @@ export interface TTSDebugInfo {
   error?: string
 }
 
+/** 图片生成 debug：重点看 prompt（真正发给 image API 的提示词） */
+export interface ImageGenDebugInfo {
+  enabled: boolean
+  triggered: boolean
+  rate_limited: boolean
+  trigger_src: string
+  skill_cats: string
+  appearance: string
+  image_style: string
+  model: string
+  api_base: string
+  prompt: string
+  /** skills | skills+llm | skills_fallback | override | override+llm */
+  prompt_src?: string
+  llm_prompt?: string
+  llm_caption?: string
+  llm_scene?: string
+  llm_has_person?: boolean
+  aspect: string
+  quality: string
+  has_ref_image: boolean
+  task_id: string
+  status: string
+  image_url: string
+  local_path: string
+  remote_url: string
+  latency_ms: number
+  hits_in_win: number
+  max_per_win: number
+  error?: string
+}
+
 export interface ContextDebugInfo {
   token_budget: number
   compact_threshold: number
@@ -85,6 +117,8 @@ interface ChatState {
   ttsDebugByUrl: Record<string, TTSDebugInfo>
   /** 按消息 id 存的当轮 context debug */
   msgCtxDebug: Record<number, ContextDebugInfo>
+  /** 按消息 id 存的图片生成 debug（prompt 等） */
+  msgImageDebug: Record<number, ImageGenDebugInfo>
 
   fetchConversations: () => Promise<void>
   selectConversation: (id: number) => Promise<void>
@@ -118,6 +152,7 @@ type DebugPersist = {
   msgTtsDebug?: Record<number, TTSDebugInfo>
   ttsDebugByUrl?: Record<string, TTSDebugInfo>
   msgCtxDebug?: Record<number, ContextDebugInfo>
+  msgImageDebug?: Record<number, ImageGenDebugInfo>
 }
 
 function loadDebugStore(): DebugPersist {
@@ -148,6 +183,15 @@ function saveDebugStore(partial: DebugPersist) {
         const sorted = keys.map(Number).sort((a, b) => a - b)
         for (const id of sorted.slice(0, keys.length - 60)) {
           delete next.msgCtxDebug[id]
+        }
+      }
+    }
+    if (next.msgImageDebug) {
+      const keys = Object.keys(next.msgImageDebug)
+      if (keys.length > 40) {
+        const sorted = keys.map(Number).sort((a, b) => a - b)
+        for (const id of sorted.slice(0, keys.length - 40)) {
+          delete next.msgImageDebug[id]
         }
       }
     }
@@ -296,6 +340,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     msgTtsDebug: loadDebugStore().msgTtsDebug || {},
     ttsDebugByUrl: loadDebugStore().ttsDebugByUrl || {},
     msgCtxDebug: loadDebugStore().msgCtxDebug || {},
+    msgImageDebug: loadDebugStore().msgImageDebug || {},
 
     fetchConversations: async () => {
       const res = await conversationAPI.getConversations()
@@ -317,6 +362,7 @@ export const useChatStore = create<ChatState>((set, get) => {
         msgTtsDebug: persisted.msgTtsDebug || {},
         ttsDebugByUrl: persisted.ttsDebugByUrl || {},
         msgCtxDebug: persisted.msgCtxDebug || {},
+        msgImageDebug: persisted.msgImageDebug || {},
         isStreaming: false,
         streamingContent: '',
       })
@@ -489,11 +535,37 @@ export const useChatStore = create<ChatState>((set, get) => {
               }
               break
             }
+            case 'image_generating': {
+              // 出图任务已触发：先上屏一句等待，避免长时间无反馈
+              const convId = get().currentConversationId
+              if (!convId) break
+              const waitId = data.message_id || Date.now()
+              const waitMsg: Message = {
+                id: waitId,
+                conversation_id: convId,
+                role: 'assistant',
+                message_type: 'text',
+                content: data.content || '等我一下哦～',
+                created_at: new Date().toISOString(),
+                is_deleted: false,
+              }
+              const early = data.image_debug as ImageGenDebugInfo | undefined
+              if (early) {
+                const nextImg = { ...get().msgImageDebug, [waitId]: early }
+                set({ messages: [...get().messages, waitMsg], msgImageDebug: nextImg })
+                saveDebugStore({ msgImageDebug: nextImg })
+              } else {
+                set({ messages: [...get().messages, waitMsg] })
+              }
+              appendLocalMessage(convId, waitMsg)
+              break
+            }
             case 'image_message': {
               const convId = get().currentConversationId
               if (!convId) break
+              const msgId = data.message_id || Date.now()
               const msg: Message = {
-                id: data.message_id || Date.now(),
+                id: msgId,
                 conversation_id: convId,
                 role: 'assistant',
                 message_type: 'image',
@@ -505,7 +577,11 @@ export const useChatStore = create<ChatState>((set, get) => {
                 created_at: new Date().toISOString(),
                 is_deleted: false,
               }
-              set({ messages: [...get().messages, msg] })
+              const imgDbg = data.image_debug as ImageGenDebugInfo | undefined
+              const nextImg = { ...get().msgImageDebug }
+              if (imgDbg) nextImg[msgId] = imgDbg
+              set({ messages: [...get().messages, msg], msgImageDebug: nextImg })
+              saveDebugStore({ msgImageDebug: nextImg })
               appendLocalMessage(convId, msg)
               break
             }
