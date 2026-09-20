@@ -78,11 +78,11 @@ func TestEstimateTokens_CJK(t *testing.T) {
 }
 
 func TestCompactL0_KeepsCoreIdentity(t *testing.T) {
-	// 短 prompt：token 未超阈值时原样返回（核心人设必须保留）
+	// 短 prompt：token 未超阈值时原样返回（技能包内容必须保留）
 	short := "你是温柔女友\n# 禁止\n1. 自称AI\n"
 	out := CompactL0Prompt(short)
 	if !strings.Contains(out, "女友") {
-		t.Fatalf("短 L0 应保留人设, got=%q", out)
+		t.Fatalf("短 L0 应保留技能包内容, got=%q", out)
 	}
 
 	// 长 prompt：应剥离示例行，保留禁止/身份
@@ -96,6 +96,12 @@ func TestCompactL0_KeepsCoreIdentity(t *testing.T) {
 		t.Fatalf("长 L0 应剥离示例标记行, got=%q", out2)
 	}
 	if !strings.Contains(out2, "禁止") && !strings.Contains(out2, "身份") && !strings.Contains(out2, "女友") {
-		t.Fatalf("长 L0 压缩后仍需保留核心, got=%q", out2)
+		t.Fatalf("长 L0 压缩后仍需保留技能包核心, got=%q", out2)
+	}
+
+	// 空技能包：回落中性占位，不得写死具体人设
+	empty := CompactL0Prompt("")
+	if strings.Contains(empty, "女友") || strings.Contains(empty, "宝宝") {
+		t.Fatalf("空 L0 占位不应含业务人设, got=%q", empty)
 	}
 }

@@ -89,7 +89,7 @@ interface ChatState {
   fetchConversations: () => Promise<void>
   selectConversation: (id: number) => Promise<void>
   loadMoreMessages: () => Promise<void>
-  clearMessages: (convId?: number) => Promise<{ message: string; archive_path?: string; archive_count?: number } | void>
+  clearMessages: (convId?: number, keepMemory?: boolean) => Promise<{ message: string; archive_path?: string; archive_count?: number } | void>
   updateConversationConfig: (convId: number, config: Record<string, unknown>) => Promise<void>
   setConversationPersona: (personaId: number | null) => Promise<void>
   createConversation: (title?: string) => Promise<Conversation>
@@ -97,6 +97,8 @@ interface ChatState {
   connectWebSocket: () => void
   sendMessage: (content: string, wantVoice?: boolean) => boolean
   disconnectWebSocket: () => void
+  /** 同步当前人格字段（如 background） */
+  patchCurrentPersona: (patch: Partial<Persona>) => void
 }
 
 let ws: WebSocket | null = null
@@ -326,7 +328,11 @@ export const useChatStore = create<ChatState>((set, get) => {
       try {
         const res = await personaAPI.getConversationPersona(id)
         if (get().currentConversationId === id) {
-          set({ currentPersona: res.persona || null })
+          const p = res.persona || null
+          set({ currentPersona: p })
+          if (p?.background) {
+            // 供聊天底图使用；MainChat 也会再拉一次 getPersona 兜底
+          }
         }
       } catch {
         if (get().currentConversationId === id) {
@@ -358,10 +364,10 @@ export const useChatStore = create<ChatState>((set, get) => {
       }
     },
 
-    clearMessages: async (convId) => {
+    clearMessages: async (convId, keepMemory = false) => {
       const id = convId || get().currentConversationId
       if (!id) return
-      const res = await conversationAPI.clearMessages(id)
+      const res = await conversationAPI.clearMessages(id, keepMemory)
       set({ messages: [], totalMessages: 0 })
       clearLocalMessages(id)
       return res
@@ -413,6 +419,12 @@ export const useChatStore = create<ChatState>((set, get) => {
       return conv
     },
 
+    patchCurrentPersona: (patch) => {
+      const cur = get().currentPersona
+      if (!cur) return
+      set({ currentPersona: { ...cur, ...patch } })
+    },
+
     connectWebSocket: () => {
       const token = localStorage.getItem('token')
       if (!token) return
@@ -451,10 +463,12 @@ export const useChatStore = create<ChatState>((set, get) => {
             debug?: unknown
             tts_debug?: TTSDebugInfo
             context_debug?: ContextDebugInfo
-            message_type?: 'text' | 'voice'
+            message_type?: 'text' | 'voice' | 'image'
             audio_url?: string
             audio_duration_ms?: number
             segments?: Message['segments']
+            image_url?: string
+            image_debug?: unknown
           }
           switch (data.type) {
             case 'context_debug': {
@@ -473,6 +487,26 @@ export const useChatStore = create<ChatState>((set, get) => {
                 set({ ttsDebug: dbg })
                 saveDebugStore({ ttsDebug: dbg })
               }
+              break
+            }
+            case 'image_message': {
+              const convId = get().currentConversationId
+              if (!convId) break
+              const msg: Message = {
+                id: data.message_id || Date.now(),
+                conversation_id: convId,
+                role: 'assistant',
+                message_type: 'image',
+                content: data.content || '',
+                image_url: data.image_url,
+                attachment_url: data.image_url,
+                attachment_type: 'image',
+                has_attachment: true,
+                created_at: new Date().toISOString(),
+                is_deleted: false,
+              }
+              set({ messages: [...get().messages, msg] })
+              appendLocalMessage(convId, msg)
               break
             }
             case 'ai_start':

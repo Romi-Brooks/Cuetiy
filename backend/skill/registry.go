@@ -26,6 +26,10 @@ type SkillModule struct {
 	Triggers    SkillTriggers `json:"triggers"`
 	Keywords    []string      `json:"keywords"`
 	Examples    []string      `json:"examples"`
+	// 出图：外貌 / 拍摄风格 / 覆盖 prompt
+	Appearance  string `json:"appearance"`
+	ImageStyle  string `json:"image_style"`
+	ImagePrompt string `json:"image_prompt"`
 }
 
 // SkillRegistry 人格包内全部技能模块的路由视图
@@ -43,7 +47,10 @@ func ResolveLoadMode(metaLoadMode, category string) string {
 	switch category {
 	case "persona_base", "persona_tone", "forbidden_rules":
 		return LoadModeAlways
-	case "emotion_companion", "style_switch", "professional_skills", "trigger_rules":
+	case "emotion_companion", "style_switch", "professional_skills", "trigger_rules", "nsfw_companion":
+		return LoadModeTrigger
+	case "image_appearance", "visual_appearance":
+		// 外貌/出图模块：chat 层可不注入全文，但 registry 始终可读 appearance/keywords
 		return LoadModeTrigger
 	default:
 		return LoadModeIndex
@@ -69,6 +76,8 @@ func DetectCategoryFromFileName(fileName string) string {
 		return "style_switch"
 	case strings.Contains(base, "trigger"), strings.Contains(base, "pet"):
 		return "trigger_rules"
+	case strings.Contains(base, "image"), strings.Contains(base, "appearance"), strings.Contains(base, "visual"):
+		return "image_appearance"
 	default:
 		return "general"
 	}
@@ -115,6 +124,9 @@ func ModuleFromFile(fileName, content string) SkillModule {
 		Triggers:    meta.Triggers,
 		Keywords:    kws,
 		Examples:    meta.Examples,
+		Appearance:  strings.TrimSpace(meta.Appearance),
+		ImageStyle:  strings.TrimSpace(meta.ImageStyle),
+		ImagePrompt: strings.TrimSpace(meta.ImagePrompt),
 	}
 }
 
@@ -305,6 +317,176 @@ func (r *SkillRegistry) ClassifierLabelList(base []string) []string {
 	add(base)
 	add(r.AllTriggerTags())
 	return out
+}
+
+// --- 出图 / 形象（由技能包描述，引擎不写死人设） ---
+
+func isImageCategory(cat string) bool {
+	switch strings.ToLower(strings.TrimSpace(cat)) {
+	case "image_appearance", "visual_appearance", "image":
+		return true
+	default:
+		return false
+	}
+}
+
+func (r *SkillRegistry) imageModules() []SkillModule {
+	if r == nil {
+		return nil
+	}
+	var out []SkillModule
+	for _, m := range r.Modules {
+		if isImageCategory(m.Category) ||
+			strings.TrimSpace(m.Appearance) != "" ||
+			strings.TrimSpace(m.ImageStyle) != "" ||
+			strings.TrimSpace(m.ImagePrompt) != "" {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// ImageTriggerKeywords 技能包声明的「想看图」触发词
+func (r *SkillRegistry) ImageTriggerKeywords() []string {
+	if r == nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	var out []string
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return
+		}
+		if _, ok := seen[s]; ok {
+			return
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	for _, m := range r.imageModules() {
+		for _, k := range m.Keywords {
+			add(k)
+		}
+		// intents/tags 含 want_image / image 时，模块 keywords 仍生效；也可在 tags 里放触发词
+		for _, t := range m.Triggers.Tags {
+			// tags 主要是语义标签；仅当看起来像中文触发短语时也纳入
+			if strings.ContainsAny(t, "看看") || strings.Contains(t, "照片") || strings.Contains(t, "自拍") {
+				add(t)
+			}
+		}
+		for _, e := range m.Examples {
+			// examples 过短且像请求时可作为弱触发（可选）；默认不把 examples 全当触发
+			_ = e
+		}
+	}
+	return out
+}
+
+// ShouldTriggerImage 是否由技能包触发出图；无包声明时返回 false（引擎不硬编码业务词）
+func (r *SkillRegistry) ShouldTriggerImage(userMsg string) bool {
+	kws := r.ImageTriggerKeywords()
+	if len(kws) == 0 {
+		return false
+	}
+	lower := strings.ToLower(userMsg)
+	for _, k := range kws {
+		if k == "" {
+			continue
+		}
+		if strings.Contains(userMsg, k) || strings.Contains(lower, strings.ToLower(k)) {
+			return true
+		}
+	}
+	// 语义标签：分类结果若含 want_image / image_ask 也可由调用方传入 tags
+	return false
+}
+
+// ShouldTriggerImageTags 分类标签命中 want_image / image_ask 等
+func (r *SkillRegistry) ShouldTriggerImageTags(tags []string) bool {
+	if r == nil {
+		return false
+	}
+	set := map[string]struct{}{}
+	for _, t := range tags {
+		set[strings.ToLower(strings.TrimSpace(t))] = struct{}{}
+	}
+	want := []string{"want_image", "image_ask", "want_photo", "want_selfie", "image"}
+	for _, m := range r.imageModules() {
+		for _, t := range m.Triggers.Intents {
+			want = append(want, strings.ToLower(strings.TrimSpace(t)))
+		}
+		for _, t := range m.Triggers.Tags {
+			want = append(want, strings.ToLower(strings.TrimSpace(t)))
+		}
+	}
+	for _, w := range want {
+		if w == "" {
+			continue
+		}
+		if _, ok := set[w]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// ImageAppearanceFromSkills 外貌描述（用于 TTI prompt）
+func (r *SkillRegistry) ImageAppearanceFromSkills() string {
+	if r == nil {
+		return ""
+	}
+	var parts []string
+	seen := map[string]struct{}{}
+	for _, m := range r.imageModules() {
+		a := strings.TrimSpace(m.Appearance)
+		if a == "" {
+			continue
+		}
+		if _, ok := seen[a]; ok {
+			continue
+		}
+		seen[a] = struct{}{}
+		parts = append(parts, a)
+	}
+	return strings.Join(parts, "；")
+}
+
+// ImageStyleFromSkills 拍摄/画面风格
+func (r *SkillRegistry) ImageStyleFromSkills() string {
+	if r == nil {
+		return ""
+	}
+	var parts []string
+	seen := map[string]struct{}{}
+	for _, m := range r.imageModules() {
+		s := strings.TrimSpace(m.ImageStyle)
+		if s == "" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		parts = append(parts, s)
+	}
+	return strings.Join(parts, "；")
+}
+
+// ImagePromptOverride 技能包整段覆盖 prompt（优先级最高）
+func (r *SkillRegistry) ImagePromptOverride() string {
+	if r == nil {
+		return ""
+	}
+	// 按 priority 降序，取第一个写了 image_prompt 的
+	mods := r.imageModules()
+	sort.SliceStable(mods, func(i, j int) bool { return mods[i].Priority > mods[j].Priority })
+	for _, m := range mods {
+		if p := strings.TrimSpace(m.ImagePrompt); p != "" {
+			return p
+		}
+	}
+	return ""
 }
 
 func firstNonEmptyLine(s string) string {

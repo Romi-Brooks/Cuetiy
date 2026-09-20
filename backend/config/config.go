@@ -68,6 +68,18 @@ type Config struct {
 	// 语音条策略：用户点名必发；AI 在概率内自选
 	VoiceReplyProbability float64 // 0~1，每条文字回复后是否额外/改为发语音条
 	VoiceReplyCooldown    int     // 连续语音条之间的最少文字条数
+
+	// 图片生成（Grsai gpt-image-2.5）
+	ImageGenEnabled       bool
+	GRSAIAPIKey           string
+	GRSAIAPIBase          string
+	ImageGenModel         string
+	ImageGenAspect        string
+	ImageGenQuality       string
+	ImageGenReplyType     string
+	ImageGenStylePrompt   string
+	ImageGenLimitMax      int
+	ImageGenLimitWindowMin int
 }
 
 var AppConfig *Config
@@ -157,6 +169,18 @@ func LoadConfig() *Config {
 		// 默认 0：AI 自选语音条暂关闭；仅用户 want_voice 时发送
 		VoiceReplyProbability: getEnvAsFloat("VOICE_REPLY_PROBABILITY", 0),
 		VoiceReplyCooldown:    getEnvAsInt("VOICE_REPLY_COOLDOWN", 3),
+
+		ImageGenEnabled: getEnv("IMAGE_GEN_ENABLED", "true") == "true",
+		GRSAIAPIKey:     getEnv("GRSAI_API_KEY", ""),
+		GRSAIAPIBase:    getEnv("GRSAI_API_BASE", "https://grsaiapi.com"),
+		ImageGenModel:   getEnv("IMAGE_GEN_MODEL", "gpt-image-2.5"),
+		ImageGenAspect:  getEnv("IMAGE_GEN_ASPECT", "1:1"),
+		ImageGenQuality: getEnv("IMAGE_GEN_QUALITY", "auto"),
+		ImageGenReplyType: getEnv("IMAGE_GEN_REPLY_TYPE", "json"),
+		ImageGenStylePrompt: getEnv("IMAGE_GEN_STYLE_PROMPT",
+			"手机自拍风格，真实生活感，自然光线，像恋人从相册发给你的照片，轻微生活场景，构图自然"),
+		ImageGenLimitMax:       getEnvAsInt("IMAGE_GEN_LIMIT_MAX", 2),
+		ImageGenLimitWindowMin: getEnvAsInt("IMAGE_GEN_LIMIT_WINDOW_MIN", 30),
 	}
 
 	for _, dir := range []string{

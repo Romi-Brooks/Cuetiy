@@ -7,6 +7,7 @@ import type {
   ConversationResponse,
   PersonasResponse,
   PersonaResponse,
+  Persona,
   FileRecord,
 } from '../types/api'
 import { getApiBase } from '../utils/server'
@@ -119,20 +120,52 @@ export const chatDataAPI = {
 
 export const secretsAPI = {
   status: () =>
-    request<{ deepseek_configured: boolean; mimo_configured: boolean; tts_enabled: boolean }>(
-      '/secrets/status',
-    ),
+    request<{
+      deepseek_configured: boolean
+      mimo_configured: boolean
+      tts_enabled: boolean
+      grsai_configured?: boolean
+      image_gen_enabled?: boolean
+      image_gen_model?: string
+    }>('/secrets/status'),
   /** 只提交要修改的 key；传空字符串表示清除。响应不回显 key */
   update: (payload: {
     deepseek_api_key?: string
     mimo_api_key?: string
+    grsai_api_key?: string
     clear_deepseek?: boolean
     clear_mimo?: boolean
+    clear_grsai?: boolean
+    image_gen_enabled?: boolean
+    image_gen_model?: string
+    image_gen_aspect?: string
+    image_gen_quality?: string
   }) =>
-    request<{ message: string; deepseek_configured: boolean; mimo_configured: boolean }>(
-      '/secrets',
-      { method: 'PUT', body: JSON.stringify(payload) },
-    ),
+    request<{
+      message: string
+      deepseek_configured: boolean
+      mimo_configured: boolean
+      grsai_configured?: boolean
+      image_gen_enabled?: boolean
+      image_gen_model?: string
+    }>('/secrets', { method: 'PUT', body: JSON.stringify(payload) }),
+}
+
+export const imageRefAPI = {
+  getMyImageRef: () =>
+    request<{
+      image_ref: { id: number; url: string; original_name: string; size: number } | null
+    }>('/image-ref'),
+  uploadMyImageRef: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return request<{ message: string; image_ref: { id: number; url: string } }>('/image-ref', {
+      method: 'POST',
+      headers: {},
+      body: formData,
+    })
+  },
+  deleteMyImageRef: () => request<{ message: string }>('/image-ref', { method: 'DELETE' }),
 }
 
 export const authAPI = {
@@ -165,9 +198,9 @@ export const conversationAPI = {
     return request<MessagesResponse>(`/conversations/${convId}/messages?${params}`)
   },
 
-  clearMessages: (convId: number) =>
-    request<{ message: string; archive_path?: string; archive_count?: number }>(
-      `/conversations/${convId}/messages`,
+  clearMessages: (convId: number, keepMemory = false) =>
+    request<{ message: string; archive_path?: string; archive_count?: number; keep_memory?: boolean }>(
+      `/conversations/${convId}/messages?keep_memory=${keepMemory ? 'true' : 'false'}`,
       { method: 'DELETE' },
     ),
 
@@ -215,6 +248,25 @@ export const personaAPI = {
     request<void>(`/personas/${id}`, {
       method: 'DELETE',
     }),
+
+  uploadPersonaBackground: (personaId: number, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return request<{ message: string; background: string; persona: Persona }>(
+      `/personas/${personaId}/background`,
+      {
+        method: 'POST',
+        headers: {},
+        body: formData,
+      },
+    )
+  },
+
+  deletePersonaBackground: (personaId: number) =>
+    request<{ message: string; background: string; persona: Persona }>(
+      `/personas/${personaId}/background`,
+      { method: 'DELETE' },
+    ),
 
   uploadSkillFile: (personaId: number, files: File[]) => {
     const formData = new FormData()

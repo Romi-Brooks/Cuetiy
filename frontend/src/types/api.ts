@@ -14,6 +14,10 @@ export interface Conversation {
   ai_nickname: string
   ai_avatar: string
   persona_id: number | null
+  /** 清空聊天时是否保留记忆卡 */
+  keep_memory_on_clear?: boolean
+  /** 亲密模式（NSFW）开关 */
+  nsfw_enabled?: boolean
   created_at: string
   updated_at: string
   avatar?: string | null
@@ -32,11 +36,16 @@ export interface Message {
   id: number
   conversation_id: number
   role: 'user' | 'assistant'
-  /** text=文字气泡；voice=语音条（不可对文字朗读） */
-  message_type?: 'text' | 'voice'
+  /** text=文字气泡；voice=语音条；image=AI 图片 */
+  message_type?: 'text' | 'voice' | 'image'
   content: string
   audio_url?: string
   audio_duration_ms?: number
+  /** AI 图片 URL（image_message） */
+  image_url?: string
+  attachment_url?: string
+  attachment_type?: string
+  has_attachment?: boolean
   /** AI 完整回复的显式小段；无则前端按规则切分 */
   segments?: ReplySegment[]
   created_at: string
@@ -51,6 +60,8 @@ export interface Persona {
   description: string
   dir_name: string
   avatar: string
+  /** 聊天页人格背景图 */
+  background?: string
   is_active: boolean
   created_at: string
   updated_at: string

@@ -59,6 +59,10 @@ func main() {
 	archiveSvc := service.NewArchiveService(msgRepo, ctxRepo)
 	voiceRepo := repository.NewVoiceRepo()
 	ttsService := service.NewTTSService(fileStorage, voiceRepo)
+	imageRefRepo := repository.NewImageRefRepo()
+	imageGenService := service.NewImageGenService(fileStorage, imageRefRepo)
+	// 出图触发/外貌由技能包 registry 驱动
+	imageGenService.BindRegistry(skillManager.GetSkillRegistry)
 	asrService := service.NewASRService()
 
 	exportSvc := service.NewExportService(convRepo, msgRepo, ctxRepo, personaRepo)
@@ -72,8 +76,8 @@ func main() {
 	})
 
 	authController := controller.NewAuthController(userRepo)
-	conversationController := controller.NewConversationController(convRepo, msgRepo, contextManager, ctxRepo, archiveSvc)
-	chatController := controller.NewChatController(msgRepo, convRepo, aiService, contextManager, assembler, msgWriter, ttsService, hub)
+	conversationController := controller.NewConversationController(convRepo, msgRepo, contextManager, ctxRepo, archiveSvc, msgWriter)
+	chatController := controller.NewChatController(msgRepo, convRepo, aiService, contextManager, assembler, msgWriter, ttsService, hub, imageGenService)
 	personaController := controller.NewPersonaController(
 		personaRepo,
 		pfRepo,
@@ -86,6 +90,7 @@ func main() {
 	userController := controller.NewUserController(userRepo)
 	uploadController := controller.NewUploadController(fileRepo, userRepo, convRepo, fileStorage)
 	ttsController := controller.NewTTSController(ttsService, asrService, fileStorage, voiceRepo)
+	imageRefController := controller.NewImageRefController(fileStorage, imageRefRepo)
 	secretsController := controller.NewSecretsController()
 
 	r := gin.Default()
@@ -194,6 +199,8 @@ func main() {
 				personas.POST("/:id/files", personaController.UploadSkillFile)
 				personas.DELETE("/:id/files/:fileId", personaController.DeleteSkillFile)
 				personas.POST("/:id/avatar", personaController.UploadPersonaAvatar)
+				personas.POST("/:id/background", personaController.UploadPersonaBackground)
+				personas.DELETE("/:id/background", personaController.DeletePersonaBackground)
 				personas.POST("/load", personaController.LoadFromDirectory)
 			personas.POST("/:id/conversation", personaController.OpenConversation)
 			}
@@ -206,6 +213,10 @@ func main() {
 			authorized.GET("/voice", ttsController.GetMyVoice)
 			authorized.POST("/voice", ttsController.UploadMyVoice)
 			authorized.DELETE("/voice", ttsController.DeleteMyVoice)
+
+			authorized.GET("/image-ref", imageRefController.GetMyImageRef)
+			authorized.POST("/image-ref", imageRefController.UploadMyImageRef)
+			authorized.DELETE("/image-ref", imageRefController.DeleteMyImageRef)
 
 			uploads := authorized.Group("/upload")
 			{

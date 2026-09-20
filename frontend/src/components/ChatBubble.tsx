@@ -3,6 +3,7 @@ import type { Message } from '../types/api'
 import { formatTime } from '../utils'
 import { resolveAssetUrl } from '../utils/url'
 import { splitReplySegments, type ReplySegment } from '../utils/segments'
+import { loadHumanizeSettings } from '../stores/settings'
 import {
   extractEmotionalActions,
   stripEmotionalForDisplay,
@@ -47,6 +48,8 @@ export function ChatBubble({
   aiAvatar,
   userNickname,
   userAvatar,
+  /** 最新 AI 回复且开启拟人节奏时，分段延时上屏 */
+  animateSegments = false,
 }: {
   message: Message
   isAI: boolean
@@ -54,6 +57,7 @@ export function ChatBubble({
   aiAvatar: string
   userNickname: string
   userAvatar: string
+  animateSegments?: boolean
 }) {
   const actionsEnabled = useActionStore((s) => s.enabled)
   const pushAction = useActionStore((s) => s.pushAction)
@@ -62,7 +66,6 @@ export function ChatBubble({
 
   const { segments, actions } = useMemo(() => {
     const acts = extractEmotionalActions(content)
-    // AI：优先服务端 complete 下发的 segments；历史消息本地按同一规则切分
     const raw: ReplySegment[] =
       isAI && message?.segments?.length
         ? message.segments
@@ -78,13 +81,61 @@ export function ChatBubble({
     return { segments: mapped, actions: acts }
   }, [content, isAI, actionsEnabled, message?.segments])
 
+  // 分段延时上屏：历史消息与关闭拟人时直接全量
+  const [visibleCount, setVisibleCount] = useState(segments.length)
+  useEffect(() => {
+    const hs = loadHumanizeSettings()
+    if (!isAI || !animateSegments || !hs.segmentRevealEnabled || segments.length <= 1) {
+      setVisibleCount(segments.length)
+      return
+    }
+    setVisibleCount(1)
+    let shown = 1
+    const gap = Math.max(200, hs.segmentRevealDelayMs || 700)
+    const timer = setInterval(() => {
+      shown += 1
+      setVisibleCount(shown)
+      if (shown >= segments.length) clearInterval(timer)
+    }, gap)
+    return () => clearInterval(timer)
+  }, [isAI, animateSegments, segments.length, message?.id])
+
   useEffect(() => {
     if (!isAI || actions.length === 0) return
     for (const a of actions) pushAction(a)
   }, [isAI, actions, pushAction])
 
   if (isAI) {
+    const imgUrl = message?.image_url || (message?.attachment_type === 'image' ? message?.attachment_url : '')
+    if (message?.message_type === 'image' && imgUrl) {
+      return (
+        <div className="flex items-start gap-3 mb-4">
+          <div className="flex-shrink-0">
+            <Avatar src={aiAvatar} name={aiNickname} fallbackClass="bg-purple-500" />
+          </div>
+          <div className="flex flex-col max-w-[70%]">
+            <span className="text-xs text-gray-400 mb-1 px-1">{aiNickname}</span>
+            {content?.trim() && (
+              <div className="chat-bubble-ai whitespace-pre-wrap break-words mb-2">{content}</div>
+            )}
+            <img
+              src={resolveAssetUrl(imgUrl)}
+              alt="AI 图片"
+              className="max-w-[220px] sm:max-w-[260px] rounded-2xl border border-gray-200 dark:border-gray-600 object-cover bg-gray-100 dark:bg-gray-700"
+              loading="lazy"
+            />
+            {message?.created_at && (
+              <span className="text-xs text-gray-400 mt-1 px-1">
+                {formatTime(message.created_at)}
+              </span>
+            )}
+          </div>
+        </div>
+      )
+    }
+
     const multi = segments.length > 1
+    const shown = segments.slice(0, Math.max(1, visibleCount))
     return (
       <div className="flex items-start gap-3 mb-4">
         <div className="flex-shrink-0">
@@ -93,7 +144,7 @@ export function ChatBubble({
         <div className="flex flex-col max-w-[70%]">
           <span className="text-xs text-gray-400 mb-1 px-1">{aiNickname}</span>
           <div className="flex flex-col gap-2">
-            {segments.map((seg) => (
+            {shown.map((seg) => (
               <div
                 key={`${message?.id ?? 'm'}:${seg.seg_id}`}
                 data-seg-id={`${message?.id ?? '0'}:${seg.seg_id}`}
@@ -114,7 +165,7 @@ export function ChatBubble({
               </div>
             ))}
           </div>
-          {multi && (
+          {multi && visibleCount >= segments.length && (
             <span className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 px-1">
               共 {segments.length} 段
             </span>

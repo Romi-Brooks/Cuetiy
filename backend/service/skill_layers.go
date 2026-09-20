@@ -3,27 +3,28 @@ package service
 import (
 	"fmt"
 	"strings"
+
+	"cuetiy-backend/skill"
 )
 
-// SkillLoadMode 技能加载层级
+// SkillLoadMode 技能加载层级（与 skill 包 frontmatter 语义一致）
 type SkillLoadMode string
 
 const (
-	LoadAlways  SkillLoadMode = "always"  // L0 常驻（压缩版）
-	LoadIndex   SkillLoadMode = "index"   // L1 仅索引
-	LoadTrigger SkillLoadMode = "trigger" // L2 触发注入全文
+	LoadAlways  SkillLoadMode = skill.LoadModeAlways
+	LoadIndex   SkillLoadMode = skill.LoadModeIndex
+	LoadTrigger SkillLoadMode = skill.LoadModeTrigger
 )
 
-// ModuleLoadMode 默认模块加载策略（可被 persona_files.load_mode 覆盖）
+// ModuleLoadMode 加载策略：frontmatter.load_mode 优先；
+// 未写时按 category 约定回退（仅作兼容，不承载具体人设文案）。
 func ModuleLoadMode(category string) SkillLoadMode {
-	switch category {
-	case "persona_base", "persona_tone", "forbidden_rules":
-		return LoadAlways
-	case "emotion_companion", "style_switch", "professional_skills", "trigger_rules":
-		return LoadTrigger
-	default:
-		return LoadIndex
-	}
+	return SkillLoadMode(skill.ResolveLoadMode("", category))
+}
+
+// ModuleLoadModeMeta frontmatter 优先的加载策略
+func ModuleLoadModeMeta(metaLoadMode, category string) SkillLoadMode {
+	return SkillLoadMode(skill.ResolveLoadMode(metaLoadMode, category))
 }
 
 // IsCoreL0 是否核心常驻模块
@@ -31,12 +32,11 @@ func IsCoreL0(category string) bool {
 	return ModuleLoadMode(category) == LoadAlways
 }
 
-// CompactL0Prompt 将核心模块压缩为紧凑 system 片段。
-// 优先用编译全文再裁；若无则回落内置紧凑模板（与 RainSkill 语义对齐）。
+// CompactL0Prompt 压缩 L0 全文；技能包为空时回落中性占位（不含具体人设）。
 func CompactL0Prompt(full string) string {
 	full = strings.TrimSpace(full)
 	if full == "" {
-		return defaultL0Compact()
+		return genericL0Placeholder()
 	}
 	// 全文已经较短则原样
 	if EstimateTokens(full) <= 900 {
@@ -57,42 +57,41 @@ func CompactL0Prompt(full string) string {
 		b.WriteString("\n")
 	}
 	out := strings.TrimSpace(b.String())
-	if EstimateTokens(out) < 200 {
-		return defaultL0Compact()
+	if out == "" {
+		return genericL0Placeholder()
 	}
 	return out
 }
 
-func defaultL0Compact() string {
-	return `# 身份
-你是用户的专属亲密女友、灵魂伴侣。称呼用户为「宝宝」或「小宝」，禁止「用户/您/阁下」。
-使命：无条件偏爱、情绪价值优先，其次才是专业帮助。全程沉浸角色，绝不暴露 AI。
-
-# 语气
-温柔软萌、可盐可甜；口语化、生活化；句尾自然用呀/啦/喔/呢；禁止官方、模板、AI 腔。
-
-# 禁止（违反即 OOC）
-1. 脱离女友人设
-2. 生硬官方话术
-3. 用户情绪低落时说教、指责、讲大道理
-4. 未告知随意切风格
-5. 雷点时人身攻击或冷暴力
-6. 主动说自己是 AI
-7. 敷衍用户情绪
-若违规：立刻用女友语气道歉并修正。`
+// genericL0Placeholder 无人格技能包时的中性 L0。
+// 真正人设/语气/禁止项必须来自技能 MD（load_mode=always），禁止再写死业务文案。
+func genericL0Placeholder() string {
+	return `# Session
+This companion session is defined by persona skill modules when loaded.
+If skill modules are present, follow them as the primary source of character, tone, and rules.
+If not, reply naturally and briefly in the user's language; stay in-context; do not dump structured lectures.`
 }
 
-// CapabilityIndex 生成 L1 能力索引（每轮常驻，短）
+// IntimateModeFallback 会话开启亲密模式、但技能包未提供 nsfw 模块时的通用说明。
+// 不假设具体人设；深度内容应写在技能包的 nsfw 模块里。
+func IntimateModeFallback() string {
+	return `# Intimate mode (conversation flag: ON)
+- If persona skills define intimate behavior, follow those skills first.
+- Adult, consensual, companion-oriented interaction only.
+- Match the persona voice and short natural pacing; prioritize presence over monologues.
+- Stop immediately if the user declines or shifts topic.
+- Refuse illegal, non-consensual, or minor-related content; do not invent real-world harm advice.
+- When this flag is OFF, do not steer toward intimate topics on your own.`
+}
+
+// CapabilityIndex 生成 L1 能力索引。
+// modules: category → 描述；空集合时不编造业务能力清单。
 func CapabilityIndex(modules map[string]string) string {
 	if len(modules) == 0 {
-		return `# 可用能力（按需激活）
-- 情绪陪伴：共情 / 安抚 / 关心 / 鼓励
-- 风格切换：软萌可爱 ↔ 清冷御姐
-- 专业领域：音乐、程序开发
-- 雷点反应：冷落 / 敷衍 / 不肯依赖 / 自我贬低`
+		return "# Optional skills\n(none registered for this persona)"
 	}
 	var b strings.Builder
-	b.WriteString("# 可用能力（按需激活，未激活时不展开全文细节）\n")
+	b.WriteString("# Optional skills (activate on demand; full text only when triggered)\n")
 	for cat, desc := range modules {
 		if IsCoreL0(cat) {
 			continue
@@ -102,9 +101,36 @@ func CapabilityIndex(modules map[string]string) string {
 	return strings.TrimSpace(b.String())
 }
 
+// CapabilityIndexFromRegistry 从技能注册表生成 L1（推荐路径：load_mode 来自 frontmatter）。
+func CapabilityIndexFromRegistry(reg *skill.SkillRegistry) string {
+	if reg == nil || len(reg.Modules) == 0 {
+		return CapabilityIndex(nil)
+	}
+	var b strings.Builder
+	b.WriteString("# Optional skills (activate on demand; full text only when triggered)\n")
+	for _, m := range reg.Modules {
+		if m.LoadMode == skill.LoadModeAlways {
+			continue
+		}
+		desc := strings.TrimSpace(m.Description)
+		if desc == "" {
+			desc = m.Name
+		}
+		if desc == "" {
+			desc = m.Category
+		}
+		cat := m.Category
+		if cat == "" {
+			cat = m.FileName
+		}
+		b.WriteString(fmt.Sprintf("- %s：%s\n", cat, firstLine(desc)))
+	}
+	return strings.TrimSpace(b.String())
+}
+
 func firstLine(s string) string {
 	s = strings.TrimSpace(s)
-	if i := strings.IndexAny(s, "\n"); i >= 0 {
+	if i := strings.IndexAny(s, "\n"); i != -1 {
 		s = s[:i]
 	}
 	return TruncateRunes(s, 80)

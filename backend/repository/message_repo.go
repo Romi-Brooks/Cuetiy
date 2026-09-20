@@ -11,6 +11,11 @@ func NewMessageRepository() *MessageRepository {
 	return &MessageRepository{}
 }
 
+// whereActive 活跃消息：兼容 PG 中 is_deleted 为 NULL 的历史行
+func whereActive() string {
+	return "(is_deleted IS NULL OR is_deleted = ?)"
+}
+
 func (r *MessageRepository) Create(msg *model.Message) error {
 	return config.DB.Create(msg).Error
 }
@@ -25,7 +30,7 @@ func (r *MessageRepository) FindOlderThan(convID int64, beforeID int64, limit in
 		limit = 100
 	}
 
-	q := config.DB.Where("conversation_id = ? AND is_deleted = ?", convID, false)
+	q := config.DB.Where("conversation_id = ? AND "+whereActive(), convID, false)
 	if beforeID > 0 {
 		q = q.Where("id < ?", beforeID)
 	}
@@ -61,7 +66,7 @@ func (r *MessageRepository) FindByConversationID(convID int64, limit, offset int
 	}
 
 	var messages []model.Message
-	err := config.DB.Where("conversation_id = ? AND is_deleted = ?", convID, false).
+	err := config.DB.Where("conversation_id = ? AND "+whereActive(), convID, false).
 		Order("created_at DESC, id DESC").
 		Limit(limit).
 		Offset(offset).
@@ -77,8 +82,12 @@ func (r *MessageRepository) FindByConversationID(convID int64, limit, offset int
 }
 
 func (r *MessageRepository) GetRecentMessages(convID int64, limit int) ([]model.Message, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
 	var messages []model.Message
-	err := config.DB.Where("conversation_id = ? AND is_deleted = ?", convID, false).
+	err := config.DB.Where("conversation_id = ? AND "+whereActive(), convID, false).
 		Order("created_at DESC").
 		Limit(limit).
 		Find(&messages).Error
@@ -98,17 +107,23 @@ func (r *MessageRepository) SoftDeleteByConversationID(convID int64) error {
 		Update("is_deleted", true).Error
 }
 
+// HardDeleteByConversationID 归档后物理删除该会话消息，保证下一轮 history 为空
+func (r *MessageRepository) HardDeleteByConversationID(convID int64) error {
+	return config.DB.Where("conversation_id = ?", convID).
+		Delete(&model.Message{}).Error
+}
+
 func (r *MessageRepository) CountByConversationID(convID int64) (int64, error) {
 	var count int64
 	err := config.DB.Model(&model.Message{}).
-		Where("conversation_id = ? AND is_deleted = ?", convID, false).
+		Where("conversation_id = ? AND "+whereActive(), convID, false).
 		Count(&count).Error
 	return count, err
 }
 
 func (r *MessageRepository) GetLastMessage(convID int64) (*model.Message, error) {
 	var msg model.Message
-	err := config.DB.Where("conversation_id = ? AND is_deleted = ?", convID, false).
+	err := config.DB.Where("conversation_id = ? AND "+whereActive(), convID, false).
 		Order("created_at DESC").
 		First(&msg).Error
 	if err != nil {
@@ -120,7 +135,7 @@ func (r *MessageRepository) GetLastMessage(convID int64) (*model.Message, error)
 // FindAllByConversationID 取会话全部有效消息（归档用）
 func (r *MessageRepository) FindAllByConversationID(convID int64) ([]model.Message, error) {
 	var messages []model.Message
-	err := config.DB.Where("conversation_id = ? AND is_deleted = ?", convID, false).
+	err := config.DB.Where("conversation_id = ? AND "+whereActive(), convID, false).
 		Order("created_at ASC, id ASC").
 		Find(&messages).Error
 	return messages, err

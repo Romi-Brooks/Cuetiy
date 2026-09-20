@@ -116,6 +116,19 @@ func (ps *PersonaStorage) UploadAvatar(personaID int64, fileName string, data []
 	return "/storage/" + objectName, nil
 }
 
+// UploadPersonaBackground 人格聊天页背景图，落盘路径与返回 URL 必须一致
+func (ps *PersonaStorage) UploadPersonaBackground(personaID int64, fileName string, data []byte) (string, error) {
+	ext := filepath.Ext(fileName)
+	if ext == "" {
+		ext = ".jpg"
+	}
+	objectName := fmt.Sprintf("persona-bg/%d/%s%s", personaID, uuid.New().String(), ext)
+	if err := ps.write(objectName, data); err != nil {
+		return "", fmt.Errorf("写入人格背景失败: %w", err)
+	}
+	return "/storage/" + objectName, nil
+}
+
 func (ps *PersonaStorage) DeleteMD(pf *model.PersonaFile) error {
 	full := ps.absPath(pf.StoragePath)
 	if err := os.Remove(full); err != nil && !os.IsNotExist(err) {

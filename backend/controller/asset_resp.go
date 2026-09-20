@@ -25,6 +25,7 @@ func absPersona(r *http.Request, p *model.Persona) model.Persona {
 	}
 	out := *p
 	out.Avatar = utils.AssetURL(r, out.Avatar)
+	out.Background = utils.AssetURL(r, out.Background)
 	return out
 }
 

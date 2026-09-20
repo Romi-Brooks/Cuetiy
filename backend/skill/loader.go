@@ -65,6 +65,13 @@ type SkillMeta struct {
 	TTLTurns     int           `yaml:"ttl_turns"`  // L2 激活轮数，0 表示用全局默认
 	Triggers     SkillTriggers `yaml:"triggers"`
 	Examples     []string      `yaml:"examples"`
+	// 图片/形象（出图遵循技能包，不写死在引擎）
+	// appearance：长什么样（五官/发型/气质…）
+	// image_style：拍摄风格（自拍/光线/场景…）
+	// image_prompt：整段覆盖式 prompt（写了则优先）
+	Appearance  string `yaml:"appearance"`
+	ImageStyle  string `yaml:"image_style"`
+	ImagePrompt string `yaml:"image_prompt"`
 }
 
 // ResolvePriority 数值优先；未写 priority_num 时回退旧文案启发式

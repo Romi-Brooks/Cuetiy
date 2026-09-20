@@ -37,6 +37,10 @@ triggers:
   tags: []                   # 自由扩展标签
 examples:                    # 可选，供后续 embedding 匹配
   - "我好难过"
+# 出图 / 形象（category: image_appearance 时生效）
+appearance: "长什么样（五官/发型/气质…）"
+image_style: "拍摄风格（自拍/光线/场景…）"
+image_prompt: "可选：整段覆盖 TTI prompt"
 ---
 ```
 

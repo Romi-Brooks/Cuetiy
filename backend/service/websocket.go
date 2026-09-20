@@ -36,6 +36,9 @@ type wsMessage struct {
 	AudioDurationMs int64  `json:"audio_duration_ms,omitempty"`
 	// 显式段分割：complete 时携带，前端按段渲染
 	Segments []ReplySegment `json:"segments,omitempty"`
+	// 图片消息（AI 自拍等）
+	ImageURL   string      `json:"image_url,omitempty"`
+	ImageDebug interface{} `json:"image_debug,omitempty"`
 }
 
 func NewWebSocketHub() *WebSocketHub {
@@ -170,5 +173,18 @@ func (h *WebSocketHub) SendContextDebug(userID int64, conversationID int64, debu
 		Type:           "context_debug",
 		ConversationID: conversationID,
 		Debug:          debug,
+	})
+}
+
+// SendImageMessage 文字 complete 之后追加一张 AI 图片（先一句话再发图）
+func (h *WebSocketHub) SendImageMessage(userID, conversationID, messageID int64, caption, imageURL string, debug interface{}) {
+	h.SendToUser(userID, wsMessage{
+		Type:           "image_message",
+		Content:        caption,
+		ConversationID: conversationID,
+		MessageID:      messageID,
+		MessageType:    "image",
+		ImageURL:       imageURL,
+		ImageDebug:     debug,
 	})
 }

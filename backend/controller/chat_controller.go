@@ -27,6 +27,7 @@ type ChatController struct {
 	assembler      *service.ContextAssembler
 	msgWriter      *service.MessageWriter
 	tts            *service.TTSService
+	imageGen       *service.ImageGenService
 	hub            *service.WebSocketHub
 	upgrader       websocket.Upgrader
 
@@ -43,6 +44,7 @@ func NewChatController(
 	msgWriter *service.MessageWriter,
 	tts *service.TTSService,
 	hub *service.WebSocketHub,
+	imageGen *service.ImageGenService,
 ) *ChatController {
 	return &ChatController{
 		msgRepo:        msgRepo,
@@ -52,6 +54,7 @@ func NewChatController(
 		assembler:      assembler,
 		msgWriter:      msgWriter,
 		tts:            tts,
+		imageGen:       imageGen,
 		hub:            hub,
 		voiceCooldown:  make(map[int64]int),
 		upgrader: websocket.Upgrader{
@@ -267,6 +270,9 @@ func (ctl *ChatController) readPump(client *service.Client) {
 			ctl.hub.SendCompleteWithDebug(userID, conv.ID, aiResponse, "text", "", 0, 0, nil, ctxDebug, segments)
 		}
 
+		// 出图遵循 skills：触发词/标签来自 registry，外貌 prompt 也来自技能包
+		ctl.maybeSendImage(userID, client, conv.ID, conv.PersonaID, content, aiResponse, assembled.Emotion)
+
 		ctl.msgWriter.EnqueueAsync(userMessage, aiMessage)
 		go func(convID int64, u, a *model.Message) {
 			ctl.contextManager.AppendToContext(convID, u)
@@ -276,6 +282,68 @@ func (ctl *ChatController) readPump(client *service.Client) {
 			}
 		}(conv.ID, userMessage, aiMessage)
 	}
+}
+
+// maybeSendImage 出图触发与外貌均来自技能包（registry）；引擎只做开关与限流
+func (ctl *ChatController) maybeSendImage(userID int64, client *service.Client, convID int64, personaID *int64, userMsg, aiReply, emotion string) {
+	if ctl.imageGen == nil || ctl.hub == nil {
+		return
+	}
+	cfg := config.AppConfig
+	if cfg == nil || !cfg.ImageGenEnabled || strings.TrimSpace(cfg.GRSAIAPIKey) == "" {
+		return
+	}
+	pid := int64(0)
+	if personaID != nil {
+		pid = *personaID
+	}
+	var tags []string
+	// 有 registry 时：keywords 或 want_image 标签触发
+	triggered, src := ctl.imageGen.ShouldTrigger(userMsg, pid, tags)
+	if !triggered {
+		log.Printf("[image] not triggered by skills user=%d persona=%d src=%s msg=%q", userID, pid, src, userMsg)
+		return
+	}
+	window := time.Duration(cfg.ImageGenLimitWindowMin) * time.Minute
+	if window <= 0 {
+		window = 30 * time.Minute
+	}
+	ok, hits := ctl.imageGen.AllowImage(userID, cfg.ImageGenLimitMax, window)
+	if !ok {
+		log.Printf("[image] rate limit user=%d hits=%d/%d", userID, hits, cfg.ImageGenLimitMax)
+		return
+	}
+
+	imgURL, dbg, err := ctl.imageGen.Generate(userID, pid, aiReply, emotion, tags)
+	if err != nil || imgURL == "" {
+		log.Printf("[image] generate failed user=%d: %v dbg=%+v", userID, err, dbg)
+		return
+	}
+	abs := imgURL
+	if client != nil && client.PublicBase != "" && strings.HasPrefix(imgURL, "/") {
+		abs = service.AbsImageURL(client.PublicBase, imgURL)
+	}
+
+	imgMsg := &model.Message{
+		ConversationID: convID,
+		Role:           "assistant",
+		Content:        "",
+		MessageType:    "image",
+		HasAttachment:  true,
+		AttachmentType: "image",
+		AttachmentURL:  abs,
+		CreatedAt:      time.Now(),
+	}
+	msgID := time.Now().UnixMilli()
+	imgMsg.ID = msgID
+	if dbg != nil {
+		dbg.Triggered = true
+		dbg.TriggerSrc = src
+	}
+	ctl.hub.SendImageMessage(userID, convID, msgID, "", abs, dbg)
+	ctl.msgWriter.EnqueueAsync(imgMsg)
+	log.Printf("[image] sent user=%d conv=%d src=%s url=%s model=%s ref=%v appear=%v",
+		userID, convID, src, abs, dbg.Model, dbg.HasRefImage, dbg.Appearance != "")
 }
 
 func (ctl *ChatController) noteTextTurn(convID int64) {

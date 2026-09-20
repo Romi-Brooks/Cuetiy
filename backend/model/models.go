@@ -23,6 +23,10 @@ type Conversation struct {
 	AINickname  string     `gorm:"size:100;not null;default:'Cuetiy'" json:"ai_nickname"`
 	AIAvatar    string     `gorm:"size:500" json:"ai_avatar"`
 	PersonaID   *int64     `gorm:"index" json:"persona_id"`
+	// 清空聊天时是否保留记忆卡（默认 false：归档后一并清掉，全新开启）
+	KeepMemoryOnClear bool `gorm:"not null;default:false" json:"keep_memory_on_clear"`
+	// 是否开启更亲密（NSFW）对话开关；开启后注入 nsfw_companion 技能
+	NSFWEnabled bool `gorm:"not null;default:false" json:"nsfw_enabled"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	LastMessage *LastMessage `gorm:"-" json:"last_message,omitempty"`
@@ -58,6 +62,8 @@ type Persona struct {
 	Description string         `gorm:"size:500" json:"description"`
 	DirName     string         `gorm:"size:200" json:"dir_name"`
 	Avatar      string         `gorm:"size:500" json:"avatar"`
+	// 聊天页人格背景图（可选）
+	Background  string         `gorm:"size:500" json:"background"`
 	IsActive    bool           `gorm:"default:true" json:"is_active"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
@@ -147,10 +153,24 @@ type UserVoice struct {
 	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
+// UserImageRef 用户上传的形象参考图（图片生成 reference），每个用户一份
+type UserImageRef struct {
+	ID           int64      `gorm:"primaryKey;autoIncrement" json:"id"`
+	UserID       int64      `gorm:"uniqueIndex;not null" json:"user_id"`
+	StoragePath  string     `gorm:"size:500;not null" json:"storage_path"`
+	URL          string     `gorm:"size:500" json:"url"`
+	MimeType     string     `gorm:"size:100" json:"mime_type"`
+	OriginalName string     `gorm:"size:255" json:"original_name"`
+	Size         int64      `json:"size"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
 func AutoMigrate(db *gorm.DB) {
 	db.AutoMigrate(
 		&User{}, &Conversation{}, &Message{}, &Persona{}, &PersonaFile{}, &FileRecord{},
 		&ConversationSummary{}, &ConversationMemory{}, &ConversationSkillState{}, &ChatArchive{},
-		&UserVoice{},
+		&UserVoice{}, &UserImageRef{},
 	)
 }

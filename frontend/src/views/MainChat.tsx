@@ -10,7 +10,7 @@ import {
 import { useUserAvatar, useUserEmail, useUserStore, useUsername } from '../stores/user'
 import { useThemeStore } from '../stores/theme'
 import { useSettingsStore } from '../stores/settings'
-import { personaAPI, ttsAPI } from '../api'
+import { personaAPI, ttsAPI, imageRefAPI, secretsAPI } from '../api'
 import { compressImageToBlob } from '../utils/image'
 import { resolveAssetUrl } from '../utils/url'
 import type { Message, PersonaFromServer, PersonaFile } from '../types/api'
@@ -134,9 +134,21 @@ export function MainChat() {
   const replyDelayMaxMs = useSettingsStore((s) => s.replyDelayMaxMs)
   const setReplyDelayEnabled = useSettingsStore((s) => s.setReplyDelayEnabled)
   const setReplyDelayRange = useSettingsStore((s) => s.setReplyDelayRange)
+  const segmentRevealEnabled = useSettingsStore((s) => s.segmentRevealEnabled)
+  const segmentRevealDelayMs = useSettingsStore((s) => s.segmentRevealDelayMs)
+  const setSegmentRevealEnabled = useSettingsStore((s) => s.setSegmentRevealEnabled)
+  const setSegmentRevealDelayMs = useSettingsStore((s) => s.setSegmentRevealDelayMs)
+  const defaultKeepMemoryOnClear = useSettingsStore((s) => s.defaultKeepMemoryOnClear)
+  const setDefaultKeepMemoryOnClear = useSettingsStore((s) => s.setDefaultKeepMemoryOnClear)
   const [wantVoice, setWantVoice] = useState(false)
   const [userVoice, setUserVoice] = useState<{ url: string; original_name?: string } | null>(null)
   const [uploadingVoice, setUploadingVoice] = useState(false)
+  const [imageRef, setImageRef] = useState<{ url: string; original_name?: string } | null>(null)
+  const [uploadingImageRef, setUploadingImageRef] = useState(false)
+  const [imageGenEnabled, setImageGenEnabled] = useState(true)
+  const [grsaiCfg, setGrsaiCfg] = useState(false)
+  const [grsaiInput, setGrsaiInput] = useState('')
+  const imageRefInputRef = useRef<HTMLInputElement>(null)
   const [asrBusy, setAsrBusy] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const asrChunksRef = useRef<BlobPart[]>([])
@@ -145,6 +157,38 @@ export function MainChat() {
   const aiAvatar = useChatStore(selectAiAvatar)
   const personaName = useChatStore(selectPersonaName)
   const currentPersona = useChatStore((s) => s.currentPersona)
+  const currentConv = useChatStore((s) =>
+    s.conversations.find((c) => c.id === s.currentConversationId) || null,
+  )
+
+  // 当前会话人格的背景图（用于聊天区底图）
+  useEffect(() => {
+    let cancelled = false
+    const pid = currentPersona?.id || currentConv?.persona_id
+    if (!pid) {
+      setPersonaBg(null)
+      return
+    }
+    if (currentPersona?.background) {
+      setPersonaBg(currentPersona.background)
+    }
+    void (async () => {
+      try {
+        const res = await personaAPI.getPersona(pid)
+        if (!cancelled && chat.currentConversationId) {
+          const bg = res.persona?.background || null
+          console.info('[persona-bg] loaded', { pid, background: bg })
+          setPersonaBg(bg)
+        }
+      } catch (e) {
+        console.warn('[persona-bg] getPersona failed', pid, e)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPersona?.id, currentPersona?.background, currentConv?.persona_id, chat.currentConversationId])
 
   const [activeTab, setActiveTab] = useState<TabKey>('chat')
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 1024)
@@ -154,6 +198,10 @@ export function MainChat() {
   const [toast, setToast] = useState<string | null>(null)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [clearingChat, setClearingChat] = useState(false)
+  const [chatSettingsOpen, setChatSettingsOpen] = useState(false)
+  const [personaBg, setPersonaBg] = useState<string | null>(null)
+  const [uploadingPersonaBg, setUploadingPersonaBg] = useState(false)
+  const personaBgInputRef = useRef<HTMLInputElement>(null)
 
   const [personas, setPersonas] = useState<PersonaFromServer[]>([])
   const [personaSearchQuery, setPersonaSearchQuery] = useState('')
@@ -211,20 +259,25 @@ export function MainChat() {
 
   const handleClearChat = useCallback(async () => {
     if (!chat.currentConversationId || clearingChat) return
+    const keep =
+      chat.conversations.find((c) => c.id === chat.currentConversationId)?.keep_memory_on_clear ??
+      defaultKeepMemoryOnClear
     const ok = window.confirm(
-      '确定清空当前对话？\n会先归档到服务器文件再删除消息；人格 Skills 与长期记忆会保留。',
+      keep
+        ? '确定清空当前对话？\n会先归档到服务器，再从数据库删除消息与摘要；记忆卡将保留。'
+        : '确定清空当前对话？\n会先归档到服务器，再从数据库删除消息/摘要/记忆卡（全新开局）。人格 Skills 保留。',
     )
     if (!ok) return
     setClearingChat(true)
     try {
-      const res = await chat.clearMessages()
-      showToast(res?.archive_path ? '已清空（已归档可溯源）' : '已清空')
+      const res = await chat.clearMessages(undefined, keep)
+      showToast(res?.archive_path ? '已清空（已归档）' : '已清空')
     } catch {
       showToast('清空失败')
     } finally {
       setClearingChat(false)
     }
-  }, [chat, clearingChat, showToast])
+  }, [chat, clearingChat, showToast, defaultKeepMemoryOnClear])
 
   /** 录音 → ASR 转文字 → 填入输入框 */
   const toggleAsrRecord = useCallback(async () => {
@@ -452,6 +505,23 @@ export function MainChat() {
       } catch {
         /* ignore */
       }
+      try {
+        const ir = await imageRefAPI.getMyImageRef()
+        setImageRef(
+          ir.image_ref
+            ? { url: ir.image_ref.url, original_name: ir.image_ref.original_name }
+            : null,
+        )
+      } catch {
+        /* ignore */
+      }
+      try {
+        const s = await secretsAPI.status()
+        setGrsaiCfg(!!s.grsai_configured)
+        setImageGenEnabled(s.image_gen_enabled !== false)
+      } catch {
+        /* ignore */
+      }
     })()
     return () => {
       cancelled = true
@@ -604,19 +674,162 @@ export function MainChat() {
                       </p>
                     </div>
                   </div>
-                  <button
-                    className="shrink-0 text-xs text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
-                    disabled={clearingChat}
-                    onClick={handleClearChat}
-                    title="清空当前对话（先归档）"
-                  >
-                    {clearingChat ? '清空中...' : '清空记录'}
-                  </button>
+                  <div className="relative shrink-0">
+                    <button
+                      className="shrink-0 text-xs text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      onClick={() => setChatSettingsOpen((v) => !v)}
+                      title="会话设置"
+                    >
+                      设置
+                    </button>
+                    {chatSettingsOpen && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-40"
+                          onClick={() => setChatSettingsOpen(false)}
+                        />
+                        <div className="absolute right-0 top-full mt-1 z-50 w-64 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 shadow-lg p-3 space-y-2">
+                          <p className="text-[11px] text-gray-400">
+                            人格：{currentPersona?.name || personaName || '默认'}
+                            {currentPersona?.id ? ` · id=${currentPersona.id}` : ''}
+                          </p>
+                          <button
+                            type="button"
+                            className="w-full text-left text-sm px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 disabled:opacity-50"
+                            disabled={clearingChat}
+                            onClick={() => {
+                              setChatSettingsOpen(false)
+                              void handleClearChat()
+                            }}
+                          >
+                            {clearingChat ? '清空中...' : '清空记录'}
+                            <p className="text-[11px] text-gray-400 mt-0.5">
+                              归档后从库删除消息（可选保留记忆卡）
+                            </p>
+                          </button>
+                          <div className="border-t border-gray-100 dark:border-gray-700 pt-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <span className="text-sm text-gray-700 dark:text-gray-200">
+                                  设置背景
+                                </span>
+                                <p className="text-[11px] text-gray-400 mt-0.5">
+                                  为当前人格聊天页添加底图（jpg/png/webp ≤6MB）
+                                </p>
+                              </div>
+                              {personaBg && (
+                                <img
+                                  src={resolveAssetUrl(personaBg)}
+                                  alt="bg"
+                                  className="w-10 h-10 rounded-lg object-cover border border-gray-200 dark:border-gray-600 shrink-0 bg-gray-100 dark:bg-gray-800"
+                                  onError={(e) => {
+                                    console.error('[persona-bg] preview load error', resolveAssetUrl(personaBg))
+                                    e.currentTarget.style.opacity = '0.3'
+                                  }}
+                                />
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 mt-2">
+                              <button
+                                type="button"
+                                className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 disabled:opacity-50"
+                                disabled={uploadingPersonaBg}
+                                onClick={() => {
+                                  if (!currentPersona?.id) {
+                                    showToast('当前会话未绑定人格，无法设置背景')
+                                    return
+                                  }
+                                  personaBgInputRef.current?.click()
+                                }}
+                              >
+                                {uploadingPersonaBg
+                                  ? '上传中...'
+                                  : personaBg
+                                    ? '更换背景'
+                                    : '上传背景'}
+                              </button>
+                              {personaBg && currentPersona?.id && (
+                                <button
+                                  type="button"
+                                  className="text-xs px-2.5 py-1.5 rounded-lg border border-red-200 text-red-500"
+                                  onClick={async () => {
+                                    try {
+                                      await personaAPI.deletePersonaBackground(currentPersona.id)
+                                      setPersonaBg(null)
+                                      showToast('背景已清除')
+                                    } catch {
+                                      showToast('清除失败')
+                                    }
+                                  }}
+                                >
+                                  移除背景
+                                </button>
+                              )}
+                            </div>
+                            <input
+                              ref={personaBgInputRef}
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0]
+                                e.target.value = ''
+                                if (!file || !currentPersona?.id) return
+                                setUploadingPersonaBg(true)
+                                try {
+                                  const res = await personaAPI.uploadPersonaBackground(
+                                    currentPersona.id,
+                                    file,
+                                  )
+                                  const bg = res.background || res.persona?.background || null
+                                  console.info('[persona-bg] uploaded', {
+                                    personaId: currentPersona.id,
+                                    background: bg,
+                                    persona: res.persona,
+                                  })
+                                  setPersonaBg(bg)
+                                  if (bg || res.persona) {
+                                    chat.patchCurrentPersona({
+                                      background: bg || undefined,
+                                    })
+                                  }
+                                  showToast('背景已设置')
+                                } catch (err) {
+                                  console.error('[persona-bg] upload failed', err)
+                                  showToast((err as Error).message || '上传失败')
+                                } finally {
+                                  setUploadingPersonaBg(false)
+                                }
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
 
+                <div className="relative flex-1 min-h-0">
+                  {personaBg && (
+                    <div
+                      className="absolute inset-0 z-0 pointer-events-none overflow-hidden bg-gray-50 dark:bg-gray-800/50"
+                      aria-hidden
+                    >
+                      <img
+                        src={resolveAssetUrl(personaBg)}
+                        alt=""
+                        className="w-full h-full object-cover opacity-25 dark:opacity-20"
+                        onError={(e) => {
+                          console.error('[persona-bg] image load error', resolveAssetUrl(personaBg))
+                          e.currentTarget.style.display = 'none'
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-b from-gray-50/50 via-transparent to-gray-50/60 dark:from-gray-900/50 dark:via-transparent dark:to-gray-900/60" />
+                    </div>
+                  )}
                 <div
                   ref={messagesContainer}
-                  className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 space-y-1 bg-gray-50 dark:bg-gray-800/50"
+                  className="relative z-[1] flex-1 h-full overflow-y-auto overscroll-contain px-4 py-4 space-y-1"
                 >
                   <div ref={loadMoreSentinel} className="h-4 flex items-center justify-center">
                     {chat.isLoading && <span className="text-xs text-gray-400">加载中...</span>}
@@ -624,7 +837,16 @@ export function MainChat() {
                   {chat.messages.map((msg, idx) => (
                     <div key={msg.id ?? idx}>
                       {shouldShowTimestamp(chat.messages, idx) && <TimeStamp time={msg.created_at} />}
-                      {msg.message_type === 'voice' && msg.audio_url ? (
+                      {msg.message_type === 'image' && (msg.image_url || msg.attachment_url) ? (
+                        <ChatBubble
+                          message={msg}
+                          isAI
+                          aiNickname={aiNickname}
+                          aiAvatar={aiAvatar}
+                          userNickname={username}
+                          userAvatar={userAvatar}
+                        />
+                      ) : msg.message_type === 'voice' && msg.audio_url ? (
                         <div
                           className={`flex items-start gap-3 mb-2 ${
                             msg.role === 'user' ? 'flex-row-reverse' : ''
@@ -656,6 +878,11 @@ export function MainChat() {
                             aiAvatar={aiAvatar}
                             userNickname={username}
                             userAvatar={userAvatar}
+                            animateSegments={
+                              msg.role === 'assistant' &&
+                              idx === chat.messages.length - 1 &&
+                              typingEnabled
+                            }
                           />
                           {msg.role === 'assistant' && (
                             <div className="flex justify-start pl-14 -mt-2 mb-3">
@@ -675,6 +902,7 @@ export function MainChat() {
                   ))}
                   {/* 微信式：流式期间不在消息区打点，仅标题显示「对方正在输入中」 */}
                   <div ref={bottomSentinel} />
+                </div>
                 </div>
 
                 <div className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-4 py-3 shrink-0">
@@ -1071,11 +1299,210 @@ export function MainChat() {
                   )}
                   <div className="flex items-center justify-between">
                     <div className="flex-1 pr-3">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">分段延时上屏</span>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        多段回复按拟人节奏逐段出现，而不是一次全部蹦出
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={segmentRevealEnabled}
+                      className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${
+                        segmentRevealEnabled ? 'bg-wechat-green' : 'bg-gray-300 dark:bg-gray-600'
+                      }`}
+                      onClick={() => setSegmentRevealEnabled(!segmentRevealEnabled)}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                          segmentRevealEnabled ? 'translate-x-5' : ''
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  {segmentRevealEnabled && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                        <span>段间隔</span>
+                        <span className="font-medium text-gray-700 dark:text-gray-200">
+                          {segmentRevealDelayMs} ms
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={200}
+                        max={3000}
+                        step={50}
+                        value={segmentRevealDelayMs}
+                        onChange={(e) => setSegmentRevealDelayMs(Number(e.target.value))}
+                        className="w-full accent-emerald-500"
+                      />
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 pr-3">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">
+                        清空时保留记忆卡
+                      </span>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        默认关闭：清空后从库删除记忆卡，全新开启；打开则归档后仍记得你
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={defaultKeepMemoryOnClear}
+                      className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${
+                        defaultKeepMemoryOnClear ? 'bg-wechat-green' : 'bg-gray-300 dark:bg-gray-600'
+                      }`}
+                      onClick={() => setDefaultKeepMemoryOnClear(!defaultKeepMemoryOnClear)}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                          defaultKeepMemoryOnClear ? 'translate-x-5' : ''
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 pr-3">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">
+                        亲密模式（NSFW）
+                      </span>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        当前会话开关。开启后注入亲密氛围技能；关闭则保持日常陪伴尺度
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={!!currentConv?.nsfw_enabled}
+                      className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${
+                        currentConv?.nsfw_enabled
+                          ? 'bg-wechat-green'
+                          : 'bg-gray-300 dark:bg-gray-600'
+                      }`}
+                      onClick={() => {
+                        const convId = chat.currentConversationId
+                        if (!convId) return
+                        const next = !currentConv?.nsfw_enabled
+                        void chat.updateConversationConfig(convId, { nsfw_enabled: next })
+                      }}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                          currentConv?.nsfw_enabled ? 'translate-x-5' : ''
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 pr-3">
                       <span className="text-sm text-gray-500 dark:text-gray-400">语音条</span>
                       <p className="text-xs text-gray-400 mt-0.5">
                         文字消息不可朗读。点输入区喇叭「要语音」后，本轮回复为语音条；
                         AI 自选发送已关闭，后续再完善
                       </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 pr-3">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">
+                        图片回复（Grsai）
+                      </span>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        触发词与「长什么样」写在技能包 image_appearance；30 分钟最多 2 次
+                        · Key {grsaiCfg ? '已配置' : '未配置（见「数据与服务器」）'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={imageGenEnabled}
+                      className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${
+                        imageGenEnabled ? 'bg-wechat-green' : 'bg-gray-300 dark:bg-gray-600'
+                      }`}
+                      onClick={async () => {
+                        const next = !imageGenEnabled
+                        setImageGenEnabled(next)
+                        try {
+                          await secretsAPI.update({ image_gen_enabled: next })
+                          showToast(next ? '图片回复已开启' : '图片回复已关闭')
+                        } catch {
+                          setImageGenEnabled(!next)
+                          showToast('保存失败')
+                        }
+                      }}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                          imageGenEnabled ? 'translate-x-5' : ''
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-sm text-gray-500 dark:text-gray-400">形象参考图</span>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        上传 jpg/png/webp（≤8MB）；无图时仅用提示词生成
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {imageRef && (
+                        <img
+                          src={resolveAssetUrl(imageRef.url)}
+                          alt="ref"
+                          className="w-10 h-10 rounded-lg object-cover border border-gray-200 dark:border-gray-600"
+                        />
+                      )}
+                      {imageRef && (
+                        <button
+                          className="text-xs text-red-400"
+                          onClick={async () => {
+                            try {
+                              await imageRefAPI.deleteMyImageRef()
+                              setImageRef(null)
+                              showToast('参考图已删除')
+                            } catch {
+                              showToast('删除失败')
+                            }
+                          }}
+                        >
+                          删除
+                        </button>
+                      )}
+                      <button
+                        className="text-xs px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300"
+                        disabled={uploadingImageRef}
+                        onClick={() => imageRefInputRef.current?.click()}
+                      >
+                        {uploadingImageRef ? '上传中...' : imageRef ? '更换' : '上传'}
+                      </button>
+                      <input
+                        ref={imageRefInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0]
+                          e.target.value = ''
+                          if (!file) return
+                          setUploadingImageRef(true)
+                          try {
+                            const res = await imageRefAPI.uploadMyImageRef(file)
+                            setImageRef({
+                              url: res.image_ref?.url || '',
+                              original_name: file.name,
+                            })
+                            showToast('参考图已更新')
+                          } catch (err) {
+                            showToast((err as Error).message || '上传失败')
+                          } finally {
+                            setUploadingImageRef(false)
+                          }
+                        }}
+                      />
                     </div>
                   </div>
                   <div className="flex items-center justify-between">

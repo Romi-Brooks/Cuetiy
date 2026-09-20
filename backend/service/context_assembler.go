@@ -112,7 +112,19 @@ func (a *ContextAssembler) buildSystem(
 
 	l0 := CompactL0Prompt(a.skillMgr.GetSystemPromptByPersona(conv.PersonaID))
 	addPart("L0 核心人设", l0)
-	addPart("L1 能力索引", CapabilityIndex(a.skillMgr.ListModuleSummaries(personaIDInt(conv.PersonaID))))
+	regForIndex := a.skillMgr.GetSkillRegistry(personaIDInt(conv.PersonaID))
+	if regForIndex != nil && len(regForIndex.Modules) > 0 {
+		addPart("L1 能力索引", CapabilityIndexFromRegistry(regForIndex))
+	} else {
+		addPart("L1 能力索引", CapabilityIndex(a.skillMgr.ListModuleSummaries(personaIDInt(conv.PersonaID))))
+	}
+	// 亲密模式：优先技能包 nsfw 模块（L2 注入）；无模块时才用通用 fallback
+	if conv.NSFWEnabled {
+		nsfwFull := a.skillMgr.GetCompiledByCategory(personaIDInt(conv.PersonaID), "nsfw_companion")
+		if strings.TrimSpace(nsfwFull) == "" {
+			addPart("Intimate mode", IntimateModeFallback())
+		}
+	}
 	if memoryText != "" {
 		addPart("长期记忆卡", TruncateRunes(memoryText, 800))
 	}
@@ -200,6 +212,10 @@ func (a *ContextAssembler) Assemble(conv *model.Conversation, userMsg string) (*
 	reg := a.skillMgr.GetSkillRegistry(personaID)
 	emotion := a.router.Route(userMsg, hint, reg)
 	cats := emotion.Categories
+	// 会话级亲密模式开关：开启后固定注入 nsfw 技能（不依赖情绪标签）
+	if conv.NSFWEnabled {
+		cats = appendUniqueString(cats, "nsfw_companion")
+	}
 
 	state, _ := a.ctxRepo.GetSkillState(conv.ID)
 	if state == nil {
@@ -276,7 +292,12 @@ func (a *ContextAssembler) Assemble(conv *model.Conversation, userMsg string) (*
 			maxChars = cfg.SummaryMaxChars
 		}
 		newSummary, cerr := a.summarizer.Compress(summaryText, toCompress, maxChars)
-		if cerr == nil && newSummary != "" {
+		if cerr != nil || newSummary == "" {
+			// 压缩失败：不得把「阈值前的全部历史」原样塞进 history
+			// 只保留最近 keep 条，旧段丢弃（本轮 debug 会标记 compact_failed）
+			log.Printf("[compact] failed conv=%d keep=%d drop=%d err=%v", conv.ID, keep, len(toCompress), cerr)
+			msgs = keepMsgs
+		} else {
 			last := toCompress[len(toCompress)-1]
 			next := &model.ConversationSummary{
 				ConversationID:   conv.ID,
@@ -426,6 +447,15 @@ func personaIDInt(p *int64) int64 {
 		return 0
 	}
 	return *p
+}
+
+func appendUniqueString(list []string, v string) []string {
+	for _, s := range list {
+		if s == v {
+			return list
+		}
+	}
+	return append(list, v)
 }
 
 func parseActiveSkills(s string) map[string]int64 {

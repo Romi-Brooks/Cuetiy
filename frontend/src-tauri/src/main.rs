@@ -173,6 +173,18 @@ fn main() {
                     "Cuetiy"
                 };
                 let _ = win.set_title(title);
+                // 开发者工具：F12 / Ctrl+Shift+I
+                #[cfg(debug_assertions)]
+                {
+                    let _ = win.open_devtools();
+                }
+                // release 也允许（tauri.conf security.devtools=true）
+                #[cfg(not(debug_assertions))]
+                {
+                    if std::env::var("CUETIY_DEVTOOLS").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(true) {
+                        let _ = win.open_devtools();
+                    }
+                }
                 if mode.is_unified() {
                     std::thread::sleep(std::time::Duration::from_millis(400));
                     inject_unified_defaults(&win);

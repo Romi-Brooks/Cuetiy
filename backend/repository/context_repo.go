@@ -85,7 +85,8 @@ func (r *ContextRepo) GetMessagesAfterID(convID int64, afterID int64, limit int)
 	if limit <= 0 {
 		limit = 200
 	}
-	q := config.DB.Where("conversation_id = ? AND is_deleted = ?", convID, false)
+	// PG 兼容：历史行 is_deleted 可能为 NULL
+	q := config.DB.Where("conversation_id = ? AND (is_deleted IS NULL OR is_deleted = ?)", convID, false)
 	if afterID > 0 {
 		q = q.Where("id > ?", afterID)
 	}
@@ -99,7 +100,7 @@ func (r *ContextRepo) GetOlderMessages(convID int64, maxID int64, limit int) ([]
 		limit = 80
 	}
 	var msgs []model.Message
-	err := config.DB.Where("conversation_id = ? AND is_deleted = ? AND id <= ?", convID, false, maxID).
+	err := config.DB.Where("conversation_id = ? AND (is_deleted IS NULL OR is_deleted = ?) AND id <= ?", convID, false, maxID).
 		Order("created_at ASC, id ASC").Limit(limit).Find(&msgs).Error
 	return msgs, err
 }

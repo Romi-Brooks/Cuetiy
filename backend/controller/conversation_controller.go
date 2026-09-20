@@ -18,6 +18,7 @@ type ConversationController struct {
 	contextManager *service.ContextManager
 	ctxRepo        *repository.ContextRepo
 	archive        *service.ArchiveService
+	msgWriter      *service.MessageWriter
 }
 
 func NewConversationController(
@@ -26,6 +27,7 @@ func NewConversationController(
 	contextManager *service.ContextManager,
 	ctxRepo *repository.ContextRepo,
 	archive *service.ArchiveService,
+	msgWriter *service.MessageWriter,
 ) *ConversationController {
 	return &ConversationController{
 		convRepo:       convRepo,
@@ -33,6 +35,7 @@ func NewConversationController(
 		contextManager: contextManager,
 		ctxRepo:        ctxRepo,
 		archive:        archive,
+		msgWriter:      msgWriter,
 	}
 }
 
@@ -149,7 +152,13 @@ func (ctl *ConversationController) ClearMessages(c *gin.Context) {
 		return
 	}
 
-	// 先归档消息 + 记忆卡到文件（Skills/人格不动），再软删消息
+	// keep_memory：query 优先，否则用会话配置；默认 false = 全新开局
+	keepMemory := conv.KeepMemoryOnClear
+	if q := c.Query("keep_memory"); q != "" {
+		keepMemory = q == "true" || q == "1"
+	}
+
+	// 先归档消息 + 记忆卡 + 摘要到文件（Skills/人格不动），再物理删除库内上下文
 	archivePath := ""
 	archiveCount := 0
 	if ctl.archive != nil {
@@ -161,21 +170,39 @@ func (ctl *ConversationController) ClearMessages(c *gin.Context) {
 		archivePath, archiveCount = path, n
 	}
 
-	// 清空：消息 + 摘要 + 技能激活态；记忆卡保留（可溯源且跨清空记得用户）
+	// 丢掉异步落库镜像，避免下一轮 Assemble 把「已清空」消息再拼进 history
+	if ctl.msgWriter != nil {
+		ctl.msgWriter.ClearPending(convID)
+	}
+
+	// Redis 软上下文 + 物理删消息（归档已留档）
 	if err := ctl.contextManager.ResetContext(convID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "清空记录失败"})
+		return
+	}
+	if err := ctl.msgRepo.HardDeleteByConversationID(convID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除消息失败"})
 		return
 	}
 	if ctl.ctxRepo != nil {
 		_ = ctl.ctxRepo.DeleteSummary(convID)
 		_ = ctl.ctxRepo.ResetSkillState(convID)
-		// 保留 ConversationMemory 与 ChatArchive
+		if !keepMemory {
+			_ = ctl.ctxRepo.DeleteMemory(convID)
+		}
 	}
 
+	msg := "聊天记录已清空（已归档，全新会话）"
+	if keepMemory {
+		msg = "聊天记录已清空（已归档，记忆卡已保留）"
+	} else {
+		msg = "聊天记录与记忆卡已清空（已归档，全新会话）"
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"message":        "聊天记录已清空（已归档，Skills 保留）",
+		"message":        msg,
 		"archive_path":   archivePath,
 		"archive_count":  archiveCount,
+		"keep_memory":    keepMemory,
 	})
 }
 
@@ -200,10 +227,12 @@ func (ctl *ConversationController) UpdateConfig(c *gin.Context) {
 	}
 
 	var req struct {
-		AINickname *string `json:"ai_nickname"`
-		AIAvatar   *string `json:"ai_avatar"`
-		Title      *string `json:"title"`
-		PersonaID  *int64  `json:"persona_id"`
+		AINickname        *string `json:"ai_nickname"`
+		AIAvatar          *string `json:"ai_avatar"`
+		Title             *string `json:"title"`
+		PersonaID         *int64  `json:"persona_id"`
+		KeepMemoryOnClear *bool   `json:"keep_memory_on_clear"`
+		NSFWEnabled       *bool   `json:"nsfw_enabled"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -222,6 +251,12 @@ func (ctl *ConversationController) UpdateConfig(c *gin.Context) {
 	}
 	if req.Title != nil {
 		conv.Title = utils.SanitizeInput(*req.Title)
+	}
+	if req.KeepMemoryOnClear != nil {
+		conv.KeepMemoryOnClear = *req.KeepMemoryOnClear
+	}
+	if req.NSFWEnabled != nil {
+		conv.NSFWEnabled = *req.NSFWEnabled
 	}
 
 	if err := ctl.convRepo.Update(conv); err != nil {

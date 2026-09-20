@@ -25,8 +25,12 @@ export function ServerDataPanel({
 
   const [deepseekCfg, setDeepseekCfg] = useState(false)
   const [mimoCfg, setMimoCfg] = useState(false)
+  const [grsaiCfg, setGrsaiCfg] = useState(false)
+  const [imageGenEnabled, setImageGenEnabled] = useState(true)
+  const [imageGenModel, setImageGenModel] = useState('gpt-image-2.5')
   const [dsInput, setDsInput] = useState('')
   const [mimoInput, setMimoInput] = useState('')
+  const [grsaiInput, setGrsaiInput] = useState('')
   const [keyBusy, setKeyBusy] = useState(false)
 
   const showToast = useCallback((msg: string) => setToast(msg), [])
@@ -36,6 +40,9 @@ export function ServerDataPanel({
       const s = await secretsAPI.status()
       setDeepseekCfg(!!s.deepseek_configured)
       setMimoCfg(!!s.mimo_configured)
+      setGrsaiCfg(!!s.grsai_configured)
+      setImageGenEnabled(s.image_gen_enabled !== false)
+      if (s.image_gen_model) setImageGenModel(s.image_gen_model)
     } catch {
       /* 未登录或无权限时忽略 */
     }
@@ -49,8 +56,20 @@ export function ServerDataPanel({
     const payload: Parameters<typeof secretsAPI.update>[0] = {}
     if (dsInput.trim()) payload.deepseek_api_key = dsInput.trim()
     if (mimoInput.trim()) payload.mimo_api_key = mimoInput.trim()
-    if (!Object.keys(payload).length) {
-      showToast('请先输入要更新的 Key')
+    if (grsaiInput.trim()) payload.grsai_api_key = grsaiInput.trim()
+    payload.image_gen_enabled = imageGenEnabled
+    if (imageGenModel.trim()) payload.image_gen_model = imageGenModel.trim()
+    if (!dsInput.trim() && !mimoInput.trim() && !grsaiInput.trim()) {
+      // 仅切换图片开关/模型
+      payload.grsai_api_key = undefined
+    }
+    if (
+      !dsInput.trim() &&
+      !mimoInput.trim() &&
+      !grsaiInput.trim() &&
+      imageGenModel.trim() === ''
+    ) {
+      showToast('请先输入要更新的 Key 或模型')
       return
     }
     setKeyBusy(true)
@@ -58,27 +77,36 @@ export function ServerDataPanel({
       const res = await secretsAPI.update(payload)
       setDeepseekCfg(!!res.deepseek_configured)
       setMimoCfg(!!res.mimo_configured)
+      setGrsaiCfg(!!res.grsai_configured)
+      if (res.image_gen_enabled != null) setImageGenEnabled(res.image_gen_enabled)
       setDsInput('')
       setMimoInput('')
+      setGrsaiInput('')
       showToast(res.message || '密钥已保存')
     } catch (e) {
       showToast((e as Error).message || '保存失败')
     } finally {
       setKeyBusy(false)
     }
-  }, [dsInput, mimoInput, showToast])
+  }, [dsInput, mimoInput, grsaiInput, imageGenEnabled, imageGenModel, showToast])
 
   const clearKey = useCallback(
-    async (which: 'deepseek' | 'mimo') => {
+    async (which: 'deepseek' | 'mimo' | 'grsai') => {
       setKeyBusy(true)
       try {
         const res = await secretsAPI.update(
-          which === 'deepseek' ? { clear_deepseek: true } : { clear_mimo: true },
+          which === 'deepseek'
+            ? { clear_deepseek: true }
+            : which === 'mimo'
+              ? { clear_mimo: true }
+              : { clear_grsai: true },
         )
         setDeepseekCfg(!!res.deepseek_configured)
         setMimoCfg(!!res.mimo_configured)
+        setGrsaiCfg(!!res.grsai_configured)
         if (which === 'deepseek') setDsInput('')
-        else setMimoInput('')
+        else if (which === 'mimo') setMimoInput('')
+        else setGrsaiInput('')
         showToast('已清除')
       } catch (e) {
         showToast((e as Error).message || '清除失败')
@@ -267,13 +295,73 @@ export function ServerDataPanel({
             />
           </div>
 
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                Grsai 图片 Key（gpt-image-2.5）
+                <span className={`ml-2 ${grsaiCfg ? 'text-wechat-green' : 'text-amber-500'}`}>
+                  {grsaiCfg ? '已配置' : '未配置'}
+                </span>
+              </span>
+              {grsaiCfg && (
+                <button
+                  type="button"
+                  className="text-[11px] text-red-400"
+                  disabled={keyBusy}
+                  onClick={() => void clearKey('grsai')}
+                >
+                  清除
+                </button>
+              )}
+            </div>
+            <input
+              type="password"
+              autoComplete="off"
+              className="w-full rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-800 dark:text-gray-100 outline-none focus:border-wechat-green"
+              placeholder={grsaiCfg ? '已配置 · 输入新 Key 可覆盖' : 'sk-...（grsai.ai dashboard）'}
+              value={grsaiInput}
+              onChange={(e) => setGrsaiInput(e.target.value)}
+              spellCheck={false}
+            />
+            <div className="flex items-center justify-between pt-1">
+              <div className="flex-1 pr-3">
+                <span className="text-xs text-gray-500 dark:text-gray-400">图片生成</span>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  触发词发图；30 分钟最多 2 次。模型可填 gpt-image-2.5
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={imageGenEnabled}
+                className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${
+                  imageGenEnabled ? 'bg-wechat-green' : 'bg-gray-300 dark:bg-gray-600'
+                }`}
+                onClick={() => setImageGenEnabled(!imageGenEnabled)}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                    imageGenEnabled ? 'translate-x-5' : ''
+                  }`}
+                />
+              </button>
+            </div>
+            <input
+              className="w-full rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-800 dark:text-gray-100 outline-none focus:border-wechat-green"
+              value={imageGenModel}
+              onChange={(e) => setImageGenModel(e.target.value)}
+              placeholder="gpt-image-2.5"
+              spellCheck={false}
+            />
+          </div>
+
           <button
             type="button"
-            disabled={keyBusy || (!dsInput.trim() && !mimoInput.trim())}
+            disabled={keyBusy}
             className="rounded-xl bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-sm px-4 py-2 disabled:opacity-40"
             onClick={() => void saveKeys()}
           >
-            {keyBusy ? '保存中...' : '保存密钥'}
+            {keyBusy ? '保存中...' : '保存密钥 / 图片设置'}
           </button>
         </div>
 

@@ -1,15 +1,21 @@
 import { create } from 'zustand'
 
-/** 拟人化节奏设置：回复前等待 + 逐字上屏 */
+/** 拟人化节奏设置：回复前等待 + 分段延时上屏 */
 export interface HumanizeSettings {
-  /** 逐字打字动画 */
+  /** 逐字打字动画（影响「输入中」停留时长） */
   typingEnabled: boolean
-  /** 每字间隔 ms，用于估算「输入中」停留时长（不是逐字上屏） */
+  /** 每字间隔 ms，用于估算「输入中」停留时长 */
   typingCharDelayMs: number
   /** 回复前模拟「看到消息再回」的延迟 */
   replyDelayEnabled: boolean
   replyDelayMinMs: number
   replyDelayMaxMs: number
+  /** 多段回复按节奏逐段上屏（参照拟人输入节奏） */
+  segmentRevealEnabled: boolean
+  /** 段与段之间的间隔 ms */
+  segmentRevealDelayMs: number
+  /** 清空聊天时是否默认保留记忆卡（可被会话配置覆盖） */
+  defaultKeepMemoryOnClear: boolean
   /** AI 回复后自动 TTS 播放 */
   voiceAutoPlay: boolean
 }
@@ -19,6 +25,9 @@ interface SettingsState extends HumanizeSettings {
   setTypingCharDelayMs: (ms: number) => void
   setReplyDelayEnabled: (v: boolean) => void
   setReplyDelayRange: (min: number, max: number) => void
+  setSegmentRevealEnabled: (v: boolean) => void
+  setSegmentRevealDelayMs: (ms: number) => void
+  setDefaultKeepMemoryOnClear: (v: boolean) => void
   setVoiceAutoPlay: (v: boolean) => void
   resetHumanize: () => void
 }
@@ -26,13 +35,14 @@ interface SettingsState extends HumanizeSettings {
 const KEY = 'cuetiy:humanize'
 
 const defaults: HumanizeSettings = {
-  // 开启后：AI 回复到达时仍保持「对方正在输入中」，按字数停够时间再一次性上屏
-  // 每字约 40ms + 600ms 起步，下限 0.8s、上限 12s；要更慢可把滑条调大（500≈一字 0.5s）
   typingEnabled: true,
   typingCharDelayMs: 40,
   replyDelayEnabled: false,
   replyDelayMinMs: 400,
   replyDelayMaxMs: 1600,
+  segmentRevealEnabled: true,
+  segmentRevealDelayMs: 700,
+  defaultKeepMemoryOnClear: false,
   voiceAutoPlay: false,
 }
 
@@ -47,6 +57,9 @@ function load(): HumanizeSettings {
       replyDelayEnabled: parsed.replyDelayEnabled ?? defaults.replyDelayEnabled,
       replyDelayMinMs: clampMs(parsed.replyDelayMinMs ?? defaults.replyDelayMinMs, 0, 8000),
       replyDelayMaxMs: clampMs(parsed.replyDelayMaxMs ?? defaults.replyDelayMaxMs, 0, 8000),
+      segmentRevealEnabled: parsed.segmentRevealEnabled ?? defaults.segmentRevealEnabled,
+      segmentRevealDelayMs: clampMs(parsed.segmentRevealDelayMs ?? defaults.segmentRevealDelayMs, 200, 3000),
+      defaultKeepMemoryOnClear: parsed.defaultKeepMemoryOnClear ?? defaults.defaultKeepMemoryOnClear,
       voiceAutoPlay: parsed.voiceAutoPlay ?? defaults.voiceAutoPlay,
     }
   } catch {
@@ -100,6 +113,19 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     const hi = clampMs(Math.max(max, lo), 0, 8000)
     persist({ replyDelayMinMs: lo, replyDelayMaxMs: hi })
     set({ replyDelayMinMs: lo, replyDelayMaxMs: hi })
+  },
+  setSegmentRevealEnabled: (v) => {
+    persist({ segmentRevealEnabled: v })
+    set({ segmentRevealEnabled: v })
+  },
+  setSegmentRevealDelayMs: (ms) => {
+    const v = clampMs(ms, 200, 3000)
+    persist({ segmentRevealDelayMs: v })
+    set({ segmentRevealDelayMs: v })
+  },
+  setDefaultKeepMemoryOnClear: (v) => {
+    persist({ defaultKeepMemoryOnClear: v })
+    set({ defaultKeepMemoryOnClear: v })
   },
   setVoiceAutoPlay: (v) => {
     persist({ voiceAutoPlay: v })

@@ -464,6 +464,118 @@ func (ctl *PersonaController) UploadPersonaAvatar(c *gin.Context) {
 	})
 }
 
+// UploadPersonaBackground POST /personas/:id/background  为某人格设置聊天页背景
+func (ctl *PersonaController) UploadPersonaBackground(c *gin.Context) {
+	userID := c.GetInt64("user_id")
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "人格ID无效"})
+		return
+	}
+
+	persona, err := ctl.personaRepo.FindByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "人格不存在"})
+		return
+	}
+	// 内置人格 UserID=0 允许当前用户设置；用户人格仅本人
+	if persona.UserID != userID && persona.UserID != 0 {
+		c.JSON(http.StatusForbidden, gin.H{"error": "无权操作"})
+		return
+	}
+	if ctl.personaStg == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "文件存储未配置"})
+		return
+	}
+
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供背景图片"})
+		return
+	}
+	defer file.Close()
+	if header.Size > 6*1024*1024 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "背景图不能超过 6MB"})
+		return
+	}
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".webp":
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "仅支持 jpg / png / webp"})
+		return
+	}
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取文件失败"})
+		return
+	}
+
+	url, err := ctl.personaStg.UploadPersonaBackground(persona.ID, header.Filename, data)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "上传失败: " + err.Error()})
+		return
+	}
+
+	persona.Background = url
+	if err := ctl.personaRepo.Update(persona); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
+		return
+	}
+	if ctl.personaCache != nil {
+		ctl.personaCache.UpsertPersona(persona)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "背景已更新",
+		"background": utils.AssetURL(c.Request, url),
+		"persona":    absPersona(c.Request, persona),
+	})
+}
+
+// DeletePersonaBackground DELETE /personas/:id/background
+func (ctl *PersonaController) DeletePersonaBackground(c *gin.Context) {
+	userID := c.GetInt64("user_id")
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "人格ID无效"})
+		return
+	}
+	persona, err := ctl.personaRepo.FindByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "人格不存在"})
+		return
+	}
+	if persona.UserID != userID && persona.UserID != 0 {
+		c.JSON(http.StatusForbidden, gin.H{"error": "无权操作"})
+		return
+	}
+	if persona.Background != "" {
+		// DB 存的是 /storage/...；删除相对 storage 根的文件
+		rel := strings.TrimPrefix(persona.Background, "/storage/")
+		if rel != "" && rel != persona.Background {
+			if config.AppConfig != nil && config.AppConfig.StorageDir != "" {
+				_ = os.Remove(filepath.Join(config.AppConfig.StorageDir, filepath.FromSlash(rel)))
+			} else {
+				_ = os.Remove(filepath.Join("data/files", filepath.FromSlash(rel)))
+			}
+		}
+	}
+	persona.Background = ""
+	_ = ctl.personaRepo.Update(persona)
+	if ctl.personaCache != nil {
+		ctl.personaCache.UpsertPersona(persona)
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "背景已清除",
+		"background": "",
+		"persona":    absPersona(c.Request, persona),
+	})
+}
+
 func (ctl *PersonaController) SetConversationPersona(c *gin.Context) {
 	userID := c.GetInt64("user_id")
 	convIDStr := c.Param("id")
