@@ -21,6 +21,7 @@ frontend/package-lock.json
 
 # output
 backend/output/
+dist/
 dist-packages/
 *.msi
 *.exe
@@ -71,6 +72,12 @@ scripts/*-build.err.log
 *~
 .DS_Store
 Thumbs.db
+
+# skills: the repo tracks only the default skill pack
+# (backend/skill/default_skills/, frontend/src-tauri/resources/skills/).
+# Custom skill packs and their backups live outside the repo, in D:\Project\Repo\YiSkill.
+/docs/skills-backup/
+*.bak
 
 # temp
 tmp/
