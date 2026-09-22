@@ -88,6 +88,12 @@ scripts/build-linux-portable.sh
 
 产物：`dist-packages/`（二进制不要提交）。
 
+## 参与贡献
+
+- [贡献指南（中文）](CONTRIBUTING-CN.md) / [English](../CONTRIBUTING.md)
+- [代码规范（中文）](CODING_STANDARD-CN.md) / [English](../CODING_STANDARD.md)
+- [问题与评估文档](issue/) — 待评估的设计问题与评估结论
+
 ## 注意
 
 - GORM 参数化 SQL；密码 bcrypt

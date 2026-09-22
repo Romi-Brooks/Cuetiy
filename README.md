@@ -1,6 +1,6 @@
 # Cuetiy
 
-> **English** | [中文](docs/README-cn.md)
+> **English** | [中文](docs/README-CN.md)
 
 AI companion chat. Supports Web / EXE / APK. Data can live on a server or on-device; chat supports JSON export/import.
 
@@ -87,6 +87,14 @@ scripts/build-linux-portable.sh
 ```
 
 Output: `dist-packages/` (do not commit binaries).
+
+## Contributing
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — how to report issues, branch, and open PRs (English)
+- [docs/CONTRIBUTING-CN.md](docs/CONTRIBUTING-CN.md) — 中文贡献指南
+- [CODING_STANDARD.md](CODING_STANDARD.md) — layering, naming, security baseline (English)
+- [docs/CODING_STANDARD-CN.md](docs/CODING_STANDARD-CN.md) — 中文代码规范
+- [docs/issue/](docs/issue/) — open design questions and evaluation documents
 
 ## Notes
 
