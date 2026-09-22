@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Design & evaluation docs / 设计与评估文档
+    url: https://github.com/Romi-Brooks/Cuetiy/tree/main/docs/issue
+    about: Unlanded design questions and evaluation conclusions live here before they become work. / 尚未落地的设计问题与评估结论都在这里，供评估与排期。
+  - name: Contributing guide / 贡献指南
+    url: https://github.com/Romi-Brooks/Cuetiy/blob/main/CONTRIBUTING.md
+    about: Branch strategy, commit format and the pre-PR checklist. / 分支策略、提交信息格式与提交前自查清单。
+  - name: Coding standard / 代码规范
+    url: https://github.com/Romi-Brooks/Cuetiy/blob/main/CODING_STANDARD.md
+    about: Layering, naming and the security baseline. / 分层、命名与安全基线。
