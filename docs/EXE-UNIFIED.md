@@ -1,4 +1,4 @@
-# Cuetiy EXE unified + 便携包（本机 SQLite）
+# Cuetiy EXE unified + 便携包
 
 ## 安装包构建
 
@@ -34,7 +34,7 @@ Cuetiy/
 1. 双击 `Cuetiy.exe`  
 2. 自动拉起本机后端 `http://127.0.0.1:8080` + SQLite  
 3. 注册本地账号  
-4. 「我的 → 数据与服务器」填 DeepSeek / MiMo Key（不回显）  
+4. 「我的 → 数据与服务器」填 DeepSeek / MiMo Key 
 
 聊天/TTS 仍需联网调模型；记录在本机 `data/`。
 

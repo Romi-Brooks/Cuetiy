@@ -1,6 +1,6 @@
-# Cuetiy EXE thin（连服务器）
+# Cuetiy EXE thin
 
-前置：Go、Node/pnpm、Rust（MSVC）、WebView2。详见本机 Rust/VS 安装说明。
+前置：Go、Node/pnpm、Rust（MSVC）、WebView2。
 
 ## 构建
 
@@ -42,7 +42,7 @@ frontend/src-tauri/target/release/bundle/msi/*.msi
 2. 登录页 →「服务器设置」→ 填 `http://<服务器IP>:8080`  
 3. 保存并测试 → 登录  
 
-密钥在「我的 → 数据与服务器」填写（不回显）。
+密钥在「我的 → 数据与服务器」填写。
 
 ## 开发调试
 
@@ -51,5 +51,3 @@ cd frontend
 $env:CUETIY_PACKAGE = 'thin'
 pnpm exec tauri dev
 ```
-
-网络若需代理，自行设置 `HTTP_PROXY` / `HTTPS_PROXY`（不要写进仓库）。

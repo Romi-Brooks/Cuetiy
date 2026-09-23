@@ -54,8 +54,6 @@ cd Cuetiy-linux-portable
 ./Cuetiy
 ```
 
-密钥：App「我的 → 数据与服务器」，不回显。
-
 **仅后端（给 thin/网页用）**
 
 ```bash

@@ -27,10 +27,9 @@ powershell -File scripts/build-apk-thin.ps1
 2. 登录页 →「服务器设置」→ `http://<服务器IP>:8080`  
 3. 保存并测试 → 登录  
 
-密钥在 App「数据与服务器」填写（不回显）。
+密钥在 App「数据与服务器」填写。
 
 ## 说明
 
-- 构建不写死 API，运行时配置  
 - debug 包可直接装；发布需签名 `assembleRelease`  
 - 局域网可用 HTTP；公网建议 HTTPS  
